@@ -1,0 +1,46 @@
+/* Light Theme */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --omnix-background: #f5f8fc;
+  --omnix-surface: #ffffff;
+  --omnix-primary: #693cf4;
+  --omnix-primary-light: #a68aff;
+  --omnix-accent: #83c9f5;
+  --omnix-accent-light: #dceeff;
+  --omnix-text: #10264b;
+  --omnix-muted: #64748b;
+  --omnix-border: #e5edf5;
+  --omnix-sidebar: #10264b;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --omnix-background: #0b1938;
+  --omnix-surface: #10264b;
+  --omnix-primary: #a68aff;
+  --omnix-primary-light: #693cf4;
+  --omnix-accent: #83c9f5;
+  --omnix-accent-light: #203d68;
+  --omnix-text: #ffffff;
+  --omnix-muted: #aabbd2;
+  --omnix-border: #294267;
+  --omnix-sidebar: #08152e;
+}
+
+/* Global theme foundation */
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--omnix-background);
+  color: var(--omnix-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}

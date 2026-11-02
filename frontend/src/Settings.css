@@ -1,0 +1,280 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+.settings-page {
+  min-height: 100vh;
+  display: flex;
+  background: #f7f9fc;
+  color: #10264b;
+  font-family: "Inter", sans-serif;
+}
+
+/* Sidebar */
+.settings-sidebar {
+  width: 250px;
+  min-height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 18px;
+  background: #fff;
+  border-right: 1px solid #e9edf4;
+}
+
+.settings-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.settings-logo {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #693cf4;
+  color: #fff;
+  font-size: 23px;
+}
+
+.settings-menu-title {
+  margin: 42px 10px 15px;
+  color: #9aa6b7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settings-nav a,
+.settings-logout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 12px;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: 0.2s;
+}
+
+.settings-nav a:hover,
+.settings-nav a.active {
+  background: #f0ebff;
+  color: #693cf4;
+}
+
+.settings-logout {
+  margin-top: auto;
+  color: #dc5353;
+}
+
+.settings-logout:hover {
+  background: #fff1f1;
+}
+
+/* Main content */
+.settings-main {
+  width: calc(100% - 250px);
+  min-height: 100vh;
+  margin-left: 250px;
+  padding: 32px 38px;
+}
+
+.settings-header {
+  margin-bottom: 28px;
+}
+
+.settings-header h1 {
+  margin: 0;
+  font-size: 25px;
+  letter-spacing: -0.7px;
+}
+
+.settings-header p {
+  margin: 8px 0 0;
+  color: #8492a6;
+  font-size: 12px;
+}
+
+/* Settings cards */
+.settings-card {
+  max-width: 950px;
+  margin-bottom: 22px;
+  padding: 25px;
+  border: 1px solid #e9edf4;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.settings-card-heading {
+  padding-bottom: 18px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.settings-card-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.settings-card-heading p {
+  margin: 7px 0 0;
+  color: #94a0b1;
+  font-size: 11px;
+}
+
+.settings-option {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.settings-option:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-option h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-option p {
+  margin: 6px 0 0;
+  color: #94a0b1;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.settings-option > a {
+  color: #693cf4;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.settings-option > a:hover {
+  text-decoration: underline;
+}
+
+.settings-coming-soon {
+  color: #94a0b1;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* Notification toggle */
+.settings-toggle {
+  position: relative;
+  width: 42px;
+  height: 23px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.settings-toggle input {
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.settings-toggle span {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: #cbd5e1;
+  transition: 0.2s;
+}
+
+.settings-toggle span::before {
+  content: "";
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: 0.2s;
+}
+
+.settings-toggle input:checked + span {
+  background: #693cf4;
+}
+
+.settings-toggle input:checked + span::before {
+  transform: translateX(19px);
+}
+
+.settings-toggle input:focus-visible + span {
+  outline: 3px solid rgba(105, 60, 244, 0.2);
+  outline-offset: 2px;
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .settings-sidebar {
+    width: 70px;
+    padding: 20px 10px;
+  }
+
+  .settings-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .settings-brand > span:last-child,
+  .settings-menu-title,
+  .settings-nav a:not(.active),
+  .settings-logout {
+    display: none;
+  }
+
+  .settings-nav a {
+    justify-content: center;
+    font-size: 0;
+  }
+
+  .settings-nav a.active {
+    font-size: 0;
+  }
+
+  .settings-main {
+    width: calc(100% - 70px);
+    margin-left: 70px;
+    padding: 22px 15px;
+  }
+
+  .settings-card {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 450px) {
+  .settings-header h1 {
+    font-size: 21px;
+  }
+
+  .settings-option {
+    gap: 10px;
+  }
+}
