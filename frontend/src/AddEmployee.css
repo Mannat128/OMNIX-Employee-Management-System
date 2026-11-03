@@ -1,3 +1,4 @@
+
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
 .add-employee-page {
@@ -79,7 +80,12 @@
 
 .add-employee-logout {
   margin-top: auto;
+  border: none;
+  background: transparent;
   color: #dc5353;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
 }
 
 .add-employee-logout:hover {
@@ -133,7 +139,7 @@
 
 /* Form card */
 .add-employee-card {
-  max-width: 850px;
+  max-width: 1050px;
   padding: 30px;
   border: 1px solid #e9edf4;
   border-radius: 13px;
@@ -145,12 +151,14 @@
   border-bottom: 1px solid #edf0f5;
 }
 
-.add-card-heading h2 {
+.add-card-heading h2,
+.form-section-heading h2 {
   margin: 0;
   font-size: 17px;
 }
 
-.add-card-heading p {
+.add-card-heading p,
+.form-section-heading p {
   margin: 7px 0 0;
   color: #94a0b1;
   font-size: 11px;
@@ -167,6 +175,7 @@
   display: flex;
   flex-direction: column;
   gap: 9px;
+  min-width: 0;
 }
 
 .add-form-group label {
@@ -175,7 +184,8 @@
   font-weight: 600;
 }
 
-.add-form-group input {
+.add-form-group input,
+.add-form-group select {
   width: 100%;
   height: 46px;
   padding: 0 13px;
@@ -189,7 +199,8 @@
   transition: 0.2s;
 }
 
-.add-form-group input:focus {
+.add-form-group input:focus,
+.add-form-group select:focus {
   border-color: #693cf4;
   box-shadow: 0 0 0 3px rgba(105, 60, 244, 0.1);
 }
@@ -198,19 +209,49 @@
   color: #9aa8ba;
 }
 
+/* Job section heading */
+.form-section-heading {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  padding: 22px 0 0;
+  border-top: 1px solid #edf0f5;
+}
+
+/* Automatic fields information */
+.form-info {
+  grid-column: 1 / -1;
+  padding: 16px 18px;
+  border: 1px solid #e4ddff;
+  border-radius: 9px;
+  background: #f8f6ff;
+}
+
+.form-info strong {
+  color: #693cf4;
+  font-size: 12px;
+}
+
+.form-info p {
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 /* Form buttons */
 .add-form-actions {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 5px;
   padding-top: 22px;
   border-top: 1px solid #edf0f5;
 }
 
 .cancel-employee-btn,
-.save-employee-btn {
+.save-employee-btn,
+.copy-password-btn {
   min-height: 43px;
   display: inline-flex;
   align-items: center;
@@ -235,14 +276,126 @@
   background: #f7f9fc;
 }
 
-.save-employee-btn {
+.save-employee-btn,
+.copy-password-btn {
   border: none;
   background: #693cf4;
   color: #fff;
 }
 
-.save-employee-btn:hover {
+.save-employee-btn:hover,
+.copy-password-btn:hover {
   background: #542bd2;
+}
+
+.save-employee-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Error message */
+.add-employee-error {
+  margin: 0 0 20px;
+  padding: 13px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f1;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+/* Temporary password success screen */
+.credential-card {
+  max-width: 650px;
+  margin: 35px auto;
+  padding: 32px;
+  border: 1px solid #e9edf4;
+  border-radius: 14px;
+  background: #fff;
+  text-align: center;
+}
+
+.credential-success-icon {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #e8f8ee;
+  color: #168344;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.credential-card h2 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.credential-card > p {
+  color: #8492a6;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.credential-details {
+  display: grid;
+  gap: 14px;
+  margin-top: 25px;
+  padding: 20px;
+  border: 1px solid #e9edf4;
+  border-radius: 10px;
+  background: #fbfcfe;
+  text-align: left;
+}
+
+.credential-details div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.credential-details span {
+  color: #8492a6;
+  font-size: 11px;
+}
+
+.credential-details strong {
+  color: #10264b;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.credential-details .temporary-password {
+  padding: 14px;
+  border: 1px dashed #a68aff;
+  border-radius: 8px;
+  background: #f5f1ff;
+}
+
+.credential-details .temporary-password strong {
+  color: #693cf4;
+  font-size: 17px;
+  letter-spacing: 1px;
+}
+
+.credential-card .credential-warning {
+  margin: 18px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #946200;
+  text-align: left;
+  font-size: 11px;
+}
+
+.credential-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
 }
 
 /* Responsive */
@@ -266,10 +419,6 @@
 
   .add-employee-nav a {
     justify-content: center;
-    font-size: 0;
-  }
-
-  .add-employee-nav a.active {
     font-size: 0;
   }
 
@@ -300,6 +449,18 @@
 
   .cancel-employee-btn,
   .save-employee-btn {
+    width: 100%;
+  }
+
+  .credential-card {
+    padding: 20px;
+  }
+
+  .credential-actions {
+    flex-direction: column;
+  }
+
+  .credential-actions button {
     width: 100%;
   }
 

@@ -1,0 +1,174 @@
+
+.omnix-sidebar {
+  width: 250px;
+  min-width: 250px;
+  min-height: 100vh;
+  padding: 26px 16px 20px;
+  background: #ffffff;
+  border-right: 1px solid #e7eaf1;
+  display: flex;
+  flex-direction: column;
+}
+
+.omnix-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 10px;
+  margin-bottom: 38px;
+  color: #10264b;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.omnix-brand-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #693cf4;
+  color: #ffffff;
+  font-size: 21px;
+}
+
+.omnix-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 11px;
+  margin-bottom: 30px;
+  border-radius: 12px;
+  background: #f7f8fc;
+}
+
+.omnix-avatar {
+  width: 39px;
+  height: 39px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #eee9ff;
+  color: #693cf4;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.omnix-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.omnix-user-info strong {
+  color: #10264b;
+  font-size: 13px;
+}
+
+.omnix-user-info span {
+  color: #8994a6;
+  font-size: 11px;
+}
+
+.omnix-sidebar-label {
+  padding: 0 12px;
+  margin: 7px 0 15px;
+  color: #9ba5b5;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+}
+
+.omnix-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.omnix-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 12px;
+  border-radius: 9px;
+  color: #53647d;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s;
+}
+
+.omnix-nav-link:hover {
+  background: #f7f4ff;
+  color: #693cf4;
+}
+
+.omnix-nav-link.active {
+  background: #f0ebff;
+  color: #693cf4;
+  font-weight: 600;
+}
+
+.omnix-nav-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.omnix-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: auto;
+  padding: 13px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #d64545;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.omnix-logout:hover {
+  background: #fff0f0;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .omnix-sidebar {
+    width: 100%;
+    min-width: 0;
+    min-height: auto;
+    padding: 15px;
+    border-right: none;
+    border-bottom: 1px solid #e7eaf1;
+  }
+
+  .omnix-brand {
+    margin-bottom: 15px;
+  }
+
+  .omnix-user-card,
+  .omnix-sidebar-label {
+    display: none;
+  }
+
+  .omnix-navigation {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .omnix-nav-link {
+    padding: 9px;
+    font-size: 12px;
+  }
+
+  .omnix-logout {
+    margin-top: 10px;
+  }
+}

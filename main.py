@@ -1,138 +1,130 @@
+
 import os
 from contextlib import asynccontextmanager
-from bson import ObjectId
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
-from pymongo import MongoClient
-from pymongo.errors import DuplicateKeyError
-load_dotenv()
-MONGODB_URL = os.getenv("MONGODB_URL")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "employee_db")
-if not MONGODB_URL:
-    raise RuntimeError("MONGODB_URL is missing from .env")
-client = MongoClient(
-    MONGODB_URL,
-    serverSelectionTimeoutMS=5000
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from database.connection import (
+    client,
+    users,
+    employees,
+    counters
 )
-db = client[DATABASE_NAME]
-employees = db["employees"]
+
+from routes.auth import router as auth_router
+from routes.admin import router as admin_router
+from routes.employees import router as employee_router
+from routes.documents import router as documents_router
+
+
+# Profile photo upload directory
+PROFILE_PHOTO_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "uploads",
+    "profile_photos"
+)
+
+# Create directory if it does not exist
+os.makedirs(PROFILE_PHOTO_DIR, exist_ok=True)
+
+
+# MongoDB connection and database indexes
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    client.admin.command("ping")
-    print("MongoDB connected successfully!")
-    yield
-    client.close()
+    try:
+        # Check MongoDB connection
+        client.admin.command("ping")
+
+        # Unique email for every user
+        users.create_index("email", unique=True)
+
+        # Unique email for every employee
+        employees.create_index("email", unique=True)
+
+        # Unique Employee ID
+        employees.create_index(
+            "employee_id",
+            unique=True,
+            sparse=True
+        )
+
+        print("MongoDB connected successfully!")
+        print("Database indexes created successfully!")
+
+        yield
+
+    finally:
+        client.close()
+        print("MongoDB connection closed.")
+
+
+# FastAPI application
 app = FastAPI(
-    title="Employee Management System",
+    title="OMNIX Employee Management System",
+    description="Employee Management System API",
+    version="2.0.0",
     lifespan=lifespan
 )
-class Employee(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    email: EmailStr
-    department: str = Field(min_length=1, max_length=100)
-def serialize_employee(employee: dict) -> dict:
-    employee["id"] = str(employee.pop("_id"))
-    return employee
+
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+
+# Serve profile photos
+app.mount(
+    "/uploads/profile_photos",
+    StaticFiles(directory=PROFILE_PHOTO_DIR),
+    name="profile_photos"
+)
+
+
+# Register API routes
+app.include_router(auth_router)
+
+app.include_router(
+    admin_router,
+    prefix="/admin",
+    tags=["Admin"]
+)
+
+app.include_router(
+    employee_router,
+    prefix="/employees",
+    tags=["Employees"]
+)
+
+app.include_router(
+    documents_router,
+    prefix="/documents",
+    tags=["Documents"]
+)
+
+
+# Home route
 @app.get("/")
 def home():
-    return {"message": "Employee Management System API is running!"}
-@app.get("/db-check")
-def check_database():
-    client.admin.command("ping")
     return {
-        "message": "MongoDB connection successful!",
-        "database": DATABASE_NAME
+        "message": "OMNIX Employee Management System API is running!"
     }
-@app.post("/employees", status_code=status.HTTP_201_CREATED)
-def create_employee(employee: Employee):
-    data = employee.model_dump()
-    data["email"] = str(data["email"]).lower()
-    try:
-        result = employees.insert_one(data)
-    except DuplicateKeyError:
-        raise HTTPException(
-            status_code=409,
-            detail="Employee email already exists"
-        )
-    saved_employee = employees.find_one(
-        {"_id": result.inserted_id}
-    )
-    return serialize_employee(saved_employee)
-@app.get("/employees")
-def get_all_employees():
-    return [
-        serialize_employee(employee)
-        for employee in employees.find()
-    ]
-@app.get("/employees")
-def get_all_employees():
-    return [
-        serialize_employee(employee)
-        for employee in employees.find()
-    ]
-@app.get("/employees/{employee_id}")
-def get_employee(employee_id: str):
-    if not ObjectId.is_valid(employee_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid employee ID"
-        )
-    employee = employees.find_one(
-        {"_id": ObjectId(employee_id)}
-    )
-    if employee is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Employee not found"
-        )
-    return serialize_employee(employee)
-@app.put("/employees/{employee_id}")
-def update_employee(employee_id: str, employee: Employee):
-    if not ObjectId.is_valid(employee_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid employee ID"
-        )
-    existing_employee = employees.find_one(
-        {"_id": ObjectId(employee_id)}
-    )
-    if existing_employee is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Employee not found"
-        )
-    data = employee.model_dump()
-    data["email"] = str(data["email"]).lower()
-    try:
-        employees.update_one(
-            {"_id": ObjectId(employee_id)},
-            {"$set": data}
-        )
-    except DuplicateKeyError:
-        raise HTTPException(
-            status_code=409,
-            detail="Employee email already exists"
-        )
-    updated_employee = employees.find_one(
-        {"_id": ObjectId(employee_id)}
-    )
-    return serialize_employee(updated_employee)
-@app.delete("/employees/{employee_id}")
-def delete_employee(employee_id: str):
-    if not ObjectId.is_valid(employee_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid employee ID"
-        )
-    result = employees.delete_one(
-        {"_id": ObjectId(employee_id)}
-    )
-    if result.deleted_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="Employee not found"
-        )
+
+
+# Database health check
+@app.get("/db-check")
+def database_check():
+    client.admin.command("ping")
+
     return {
-        "message": "Employee deleted successfully"
+        "message": "MongoDB connection successful!"
     }

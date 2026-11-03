@@ -1,5 +1,18 @@
+
 fastapi
 uvicorn[standard]
 pymongo
 python-dotenv
 email-validator
+certifi
+
+# OCR dependencies
+easyocr
+pymupdf
+numpy
+
+# Excel export
+openpyxl
+
+# Image processing dependency
+Pillow

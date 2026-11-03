@@ -1,6 +1,8 @@
 
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
 import "./Employees.css";
 
 const API_URL = "http://127.0.0.1:8000";
@@ -8,26 +10,29 @@ const API_URL = "http://127.0.0.1:8000";
 function Employees() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState("");
   const [employees, setEmployees] = useState([]);
   const [pendingCount, setPendingCount] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [deletingId, setDeletingId] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [notice, setNotice] = useState("");
 
   const token = localStorage.getItem("access_token");
 
-  useEffect(() => {
+  const handleUnauthorized = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
+  }, [navigate]);
+
+  const fetchEmployees = useCallback(async () => {
     if (!token) {
-      navigate("/login");
+      handleUnauthorized();
       return;
     }
 
-    fetchEmployees();
-    fetchPendingCount();
-  }, []);
-
-  const fetchEmployees = async () => {
     try {
       setLoading(true);
       setError("");
@@ -35,30 +40,38 @@ function Employees() {
       const response = await fetch(`${API_URL}/employees/`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          Accept: "application/json",
         },
       });
 
+      const data = await response.json().catch(() => []);
+
       if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        navigate("/login");
+        handleUnauthorized();
         return;
       }
 
       if (!response.ok) {
-        throw new Error("Unable to load employee records.");
+        throw new Error(
+          data.detail || "Unable to load employee records."
+        );
       }
 
-      const data = await response.json();
       setEmployees(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err.message || "Something went wrong.");
+      setError(
+        err.message === "Failed to fetch"
+          ? "Unable to connect to the backend server."
+          : err.message
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, handleUnauthorized]);
 
-  const fetchPendingCount = async () => {
+  const fetchPendingCount = useCallback(async () => {
+    if (!token) return;
+
     try {
       const response = await fetch(`${API_URL}/admin/pending-users`, {
         headers: {
@@ -66,154 +79,149 @@ function Employees() {
         },
       });
 
+      if (response.status === 401 || response.status === 403) {
+        handleUnauthorized();
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
         setPendingCount(Array.isArray(data) ? data.length : null);
       }
     } catch (err) {
-      console.error("Unable to load pending employees:", err);
+      console.error("Unable to load pending approvals:", err);
     }
-  };
+  }, [token, handleUnauthorized]);
+
+  useEffect(() => {
+    fetchEmployees();
+    fetchPendingCount();
+  }, [fetchEmployees, fetchPendingCount]);
+
+  const activeCount = employees.filter(
+    (employee) => employee.employment_status === "Active"
+  ).length;
+
+  const inactiveCount = employees.filter(
+    (employee) => employee.employment_status === "Inactive"
+  ).length;
 
   const filteredEmployees = useMemo(() => {
     const query = search.toLowerCase().trim();
 
-    if (!query) return employees;
-
     return employees.filter((employee) => {
-      const name = employee.name || "";
-      const email = employee.email || "";
-      const department = employee.department || "";
-
-      return (
-        name.toLowerCase().includes(query) ||
-        email.toLowerCase().includes(query) ||
-        department.toLowerCase().includes(query)
+      const matchesSearch = [
+        employee.name,
+        employee.email,
+        employee.employee_id,
+        employee.department,
+        employee.designation,
+      ].some((value) =>
+        String(value || "").toLowerCase().includes(query)
       );
-    });
-  }, [employees, search]);
 
-  const handleDelete = async (employee) => {
-    const employeeId = employee._id || employee.id;
+      const matchesStatus =
+        statusFilter === "All" ||
+        employee.employment_status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [employees, search, statusFilter]);
+
+  const handleStatusChange = async (employee) => {
+    const employeeId = employee.id;
+    const isActive = employee.employment_status === "Active";
 
     if (!employeeId) {
-      setError("Employee ID is missing. Cannot delete this record.");
+      setError("Employee record ID is missing.");
       return;
     }
 
+    const action = isActive ? "deactivate" : "activate";
+    const nextStatus = isActive ? "Inactive" : "Active";
+
     const confirmed = window.confirm(
-      `Are you sure you want to delete ${employee.name || "this employee"}?`
+      `Are you sure you want to ${action} ${employee.name}?`
     );
 
     if (!confirmed) return;
 
     try {
-      setDeletingId(employeeId);
+      setActionLoading(employeeId);
       setError("");
+      setNotice("");
 
       const response = await fetch(
-        `${API_URL}/employees/${employeeId}`,
+        `${API_URL}/employees/${employeeId}/${action}`,
         {
-          method: "DELETE",
+          method: "PATCH",
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       );
 
+      const result = await response.json().catch(() => ({}));
+
+      if (response.status === 401 || response.status === 403) {
+        handleUnauthorized();
+        return;
+      }
+
       if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.detail || "Unable to delete employee.");
+        throw new Error(
+          result.detail || `Unable to ${action} employee.`
+        );
       }
 
       setEmployees((previous) =>
-        previous.filter(
-          (item) => (item._id || item.id) !== employeeId
+        previous.map((item) =>
+          item.id === employeeId
+            ? { ...item, employment_status: nextStatus }
+            : item
         )
       );
+
+      setNotice(
+        `${employee.name} has been ${action}d successfully.`
+      );
     } catch (err) {
-      setError(err.message || "Delete operation failed.");
+      setError(err.message || "Status update failed.");
     } finally {
-      setDeletingId(null);
+      setActionLoading(null);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    navigate("/login");
+  const getPhotoUrl = (photo) => {
+    if (!photo) return null;
+
+    if (photo.startsWith("http://") || photo.startsWith("https://")) {
+      return photo;
+    }
+
+    return `${API_URL}${photo.startsWith("/") ? "" : "/"}${photo}`;
   };
 
   return (
     <div className="employees-page">
-      <aside className="employees-sidebar">
-        <div className="employees-brand">
-          <span className="employees-logo">O</span>
-          <span>OMNIX</span>
-        </div>
-
-        <p className="employees-menu-title">MAIN MENU</p>
-
-        <nav className="employees-nav">
-          <a href="/admin/dashboard">▦ Dashboard</a>
-          <a href="/employees" className="active">♙ Employees</a>
-          <a href="/admin/approvals">◷ Approvals</a>
-          <a href="/documents">▤ Documents</a>
-          <a href="/admin/settings">⚙ Settings</a>
-        </nav>
-
-        <button
-          type="button"
-          className="employees-logout"
-          onClick={handleLogout}
-        >
-          ↪ Logout
-        </button>
-      </aside>
+      <Sidebar role="admin" />
 
       <main className="employees-main">
-        <header className="employees-header">
-          <div>
-            <h1>Employee Management</h1>
-            <p>Manage and organize employee records.</p>
-          </div>
+        <Header />
 
-          <a href="/employees/add" className="add-employee-btn">
-            + Add Employee
-          </a>
-        </header>
-
-        <section className="employees-summary">
-          <div>
-            <span>Total Employees</span>
-            <h2>{loading ? "—" : employees.length}</h2>
-          </div>
-
-          <div>
-            <span>Active Employees</span>
-            <h2>—</h2>
-          </div>
-
-          <div>
-            <span>Pending Employees</span>
-            <h2>{pendingCount === null ? "—" : pendingCount}</h2>
-          </div>
-        </section>
-
-        <section className="employees-table-section">
-          <div className="employees-table-heading">
+        <div className="employees-content">
+          <section className="employees-page-heading">
             <div>
-              <h2>All Employees</h2>
-              <p>View and manage employee information.</p>
+              <h2>Manage Your Team</h2>
+              <p>
+                View, organize and manage all employee records in one place.
+              </p>
             </div>
 
-            <input
-              type="search"
-              placeholder="Search employees..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+            <Link to="/employees/add" className="add-employee-btn">
+              <span>+</span> Add Employee
+            </Link>
+          </section>
 
           {error && (
             <p className="employees-error" role="alert">
@@ -221,93 +229,225 @@ function Employees() {
             </p>
           )}
 
-          <div className="employees-table-wrapper">
-            <table className="employees-table">
-              <thead>
-                <tr>
-                  <th>Employee Name</th>
-                  <th>Email Address</th>
-                  <th>Department</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+          {notice && (
+            <p className="employees-notice" role="status">
+              {notice}
+            </p>
+          )}
 
-              <tbody>
-                {loading ? (
+          <section className="employees-summary">
+            <article className="employee-summary-card">
+              <div className="employee-summary-top">
+                <span>Total Employees</span>
+                <div className="summary-icon purple">♙</div>
+              </div>
+              <h2>{loading ? "..." : employees.length}</h2>
+              <small>All employee records</small>
+            </article>
+
+            <article className="employee-summary-card">
+              <div className="employee-summary-top">
+                <span>Active Employees</span>
+                <div className="summary-icon green">✓</div>
+              </div>
+              <h2>{loading ? "..." : activeCount}</h2>
+              <small>Currently active</small>
+            </article>
+
+            <article className="employee-summary-card">
+              <div className="employee-summary-top">
+                <span>Inactive Employees</span>
+                <div className="summary-icon orange">◷</div>
+              </div>
+              <h2>{loading ? "..." : inactiveCount}</h2>
+              <small>Currently inactive</small>
+            </article>
+
+            <article className="employee-summary-card">
+              <div className="employee-summary-top">
+                <span>Pending Approvals</span>
+                <div className="summary-icon blue">♧</div>
+              </div>
+              <h2>{pendingCount === null ? "—" : pendingCount}</h2>
+              <small>Awaiting admin approval</small>
+            </article>
+          </section>
+
+          <section className="employees-table-section">
+            <div className="employees-table-heading">
+              <div>
+                <h2>All Employees</h2>
+                <p>
+                  {loading
+                    ? "Loading employee records..."
+                    : `${filteredEmployees.length} employee record(s) found`}
+                </p>
+              </div>
+
+              <div className="employees-controls">
+                <input
+                  type="search"
+                  placeholder="Search name, ID, email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Search employees"
+                />
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  aria-label="Filter by employment status"
+                >
+                  <option value="All">All Status</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="employees-table-wrapper">
+              <table className="employees-table">
+                <thead>
                   <tr>
-                    <td colSpan="5" className="employees-empty-cell">
-                      Loading employee records...
-                    </td>
+                    <th>Employee</th>
+                    <th>Employee ID</th>
+                    <th>Department</th>
+                    <th>Designation</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                   </tr>
-                ) : filteredEmployees.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="employees-empty-cell">
-                      <div className="employees-empty">
-                        <span>♙</span>
-                        <h3>No employees found</h3>
-                        <p>
-                          {search
-                            ? "Try another search term."
-                            : "Employee records will appear here when available."}
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredEmployees.map((employee) => {
-                    const employeeId = employee._id || employee.id;
+                </thead>
 
-                    return (
-                      <tr key={employeeId || employee.email}>
-                        <td>{employee.name || "—"}</td>
-                        <td>{employee.email || "—"}</td>
-                        <td>{employee.department || "—"}</td>
-                        <td>{employee.status || "—"}</td>
-                        <td>
-                          <div className="approval-actions">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                navigate(`/employees/${employeeId}`)
-                              }
-                              disabled={!employeeId}
-                            >
-                              View
-                            </button>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" className="employees-empty-cell">
+                        Loading employee records...
+                      </td>
+                    </tr>
+                  ) : filteredEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="employees-empty-cell">
+                        <div className="employees-empty">
+                          <span>♙</span>
+                          <h3>No employees found</h3>
+                          <p>
+                            {search || statusFilter !== "All"
+                              ? "Try changing your search or status filter."
+                              : "Employee records will appear here when available."}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredEmployees.map((employee) => {
+                      const employeeId = employee.id;
+                      const isActive =
+                        employee.employment_status === "Active";
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                navigate(`/employees/edit/${employeeId}`)
-                              }
-                              disabled={!employeeId}
-                            >
-                              Edit
-                            </button>
+                      return (
+                        <tr key={employeeId}>
+                          <td>
+                            <div className="employee-name-cell">
+                              {employee.profile_photo ? (
+                                <img
+                                  className="employee-photo"
+                                  src={getPhotoUrl(employee.profile_photo)}
+                                  alt=""
+                                />
+                              ) : (
+                                <div className="employee-table-avatar">
+                                  {employee.name?.charAt(0)?.toUpperCase() || "U"}
+                                </div>
+                              )}
 
-                            <button
-                              type="button"
-                              className="delete-btn"
-                              onClick={() => handleDelete(employee)}
-                              disabled={
-                                !employeeId || deletingId === employeeId
-                              }
+                              <div>
+                                <strong>{employee.name || "—"}</strong>
+                                <small>{employee.email || "—"}</small>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>{employee.employee_id || "—"}</td>
+                          <td>{employee.department || "—"}</td>
+                          <td>{employee.designation || "—"}</td>
+
+                          <td>
+                            <span
+                              className={`employee-status ${
+                                isActive ? "status-active" : "status-inactive"
+                              }`}
                             >
-                              {deletingId === employeeId
-                                ? "Deleting..."
-                                : "Delete"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                              {employee.employment_status || "Unknown"}
+                            </span>
+                          </td>
+
+                          <td>
+                            <div className="employee-actions">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigate(`/employees/${employeeId}`)
+                                }
+                                disabled={!employeeId}
+                              >
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigate(`/employees/edit/${employeeId}`)
+                                }
+                                disabled={!employeeId}
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                className={
+                                  isActive ? "deactivate-btn" : "activate-btn"
+                                }
+                                onClick={() => handleStatusChange(employee)}
+                                disabled={
+                                  !employeeId || actionLoading === employeeId
+                                }
+                              >
+                                {actionLoading === employeeId
+                                  ? "Updating..."
+                                  : isActive
+                                    ? "Deactivate"
+                                    : "Activate"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="employees-table-footer">
+              <span>
+                Showing {filteredEmployees.length} of {employees.length} employees
+              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  fetchEmployees();
+                  fetchPendingCount();
+                }}
+                disabled={loading}
+              >
+                ↻ Refresh
+              </button>
+            </div>
+          </section>
+        </div>
       </main>
     </div>
   );
