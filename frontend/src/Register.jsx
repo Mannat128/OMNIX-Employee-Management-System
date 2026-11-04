@@ -1,9 +1,8 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import API from "./api";
 import "./Register.css";
-
-const API_URL = "http://127.0.0.1:8000";
 
 function Register() {
   const navigate = useNavigate();
@@ -25,39 +24,35 @@ function Register() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          email,
-          department,
-          password,
-        }),
+      const response = await API.post("/auth/register", {
+        name: name.trim(),
+        email: email.trim(),
+        department: department.trim(),
+        password,
       });
 
-      const data = await response.json();
+      const data = response.data;
 
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Registration failed. Please try again."
-        );
-      }
+      setMessage(
+        data.message ||
+        "Registration successful. Please wait for admin approval."
+      );
 
-      setMessage(data.message || "Registration successful.");
+      setName("");
+      setEmail("");
+      setDepartment("");
+      setPassword("");
 
       setTimeout(() => {
         navigate("/login", { replace: true });
-      }, 1800);
+      }, 2500);
 
     } catch (err) {
       setError(
-        err.message === "Failed to fetch"
-          ? "Unable to connect to the server. Please try again."
-          : err.message
+        err.response?.data?.detail ||
+        (err.code === "ERR_NETWORK"
+          ? "Unable to connect to the server."
+          : "Registration failed. Please try again.")
       );
     } finally {
       setLoading(false);
@@ -66,17 +61,20 @@ function Register() {
 
   return (
     <div className="register-page">
+
       <div className="register-brand">
         <div className="register-logo">O</div>
         <span>OMNIX</span>
       </div>
 
       <div className="register-container">
+
         <div className="register-info">
           <span className="register-label">JOIN OMNIX</span>
 
           <h1>
-            Build better teams.<br />
+            Build better teams.
+            <br />
             <span>Work smarter.</span>
           </h1>
 
@@ -93,13 +91,16 @@ function Register() {
         </div>
 
         <div className="register-card">
+
           <div className="register-card-heading">
             <h2>Create an account</h2>
             <p>Enter your details to get started.</p>
           </div>
 
           <form className="register-form" onSubmit={handleRegister}>
+
             <label htmlFor="registerName">Full Name</label>
+
             <input
               id="registerName"
               type="text"
@@ -111,6 +112,7 @@ function Register() {
             />
 
             <label htmlFor="registerEmail">Email Address</label>
+
             <input
               id="registerEmail"
               type="email"
@@ -122,6 +124,7 @@ function Register() {
             />
 
             <label htmlFor="registerDepartment">Department</label>
+
             <input
               id="registerDepartment"
               type="text"
@@ -149,25 +152,20 @@ function Register() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
 
             {error && (
-              <p
-                role="alert"
-                style={{ color: "#dc2626", fontSize: "13px" }}
-              >
+              <p className="register-error" role="alert">
                 {error}
               </p>
             )}
 
             {message && (
-              <p
-                role="status"
-                style={{ color: "#15803d", fontSize: "13px" }}
-              >
+              <p className="register-success" role="status">
                 {message}
               </p>
             )}
@@ -179,16 +177,19 @@ function Register() {
             >
               {loading ? "Creating Account..." : "Create Account →"}
             </button>
+
           </form>
 
           <p className="register-login">
-            Already have an account? <a href="/login">Sign in</a>
+            Already have an account?{" "}
+            <Link to="/login">Sign in</Link>
           </p>
 
           <div className="register-note">
-            Your registration will be processed according to account
-            registration and approval rules.
+            Your registration will be reviewed by the administrator.
+            You can sign in after your account is approved.
           </div>
+
         </div>
       </div>
     </div>

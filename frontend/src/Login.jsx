@@ -1,9 +1,8 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import API from "./api";
 import "./Login.css";
-
-const API_URL = "http://127.0.0.1:8000";
 
 function Login() {
   const navigate = useNavigate();
@@ -21,43 +20,42 @@ function Login() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+      const response = await API.post("/auth/login", {
+        email: email.trim(),
+        password,
       });
 
-      const data = await response.json();
+      const data = response.data;
 
-      if (!response.ok) {
-        throw new Error(data.detail || "Login failed. Please try again.");
+      if (!data.access_token || !data.user) {
+        throw new Error("Invalid login response from server.");
       }
 
-      // Save authentication details
+      const role = data.user.role?.toLowerCase();
+
+      if (role !== "admin" && role !== "employee") {
+        throw new Error("Invalid account role.");
+      }
+
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      // Redirect according to user role
-      if (data.user.role === "admin") {
+      if (role === "admin") {
         navigate("/admin/dashboard", { replace: true });
-      } else if (data.user.role === "employee") {
-        navigate("/employee/dashboard", { replace: true });
       } else {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        setError("Invalid account role.");
+        navigate("/employee/dashboard", { replace: true });
       }
+
     } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.message ||
+        "Login failed. Please try again.";
+
       setError(
-        err.message === "Failed to fetch"
+        err.code === "ERR_NETWORK"
           ? "Unable to connect to the server. Please try again."
-          : err.message
+          : message
       );
     } finally {
       setLoading(false);
@@ -76,7 +74,8 @@ function Login() {
           <span className="login-label">WELCOME TO OMNIX</span>
 
           <h1>
-            One Platform.<br />
+            One Platform.
+            <br />
             <span>Everything Connected.</span>
           </h1>
 
@@ -127,20 +126,14 @@ function Login() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
 
             {error && (
-              <p
-                role="alert"
-                style={{
-                  color: "#dc2626",
-                  fontSize: "13px",
-                  margin: "4px 0",
-                }}
-              >
+              <p className="login-error" role="alert">
                 {error}
               </p>
             )}
@@ -155,11 +148,13 @@ function Login() {
           </form>
 
           <p className="login-register">
-            Don't have an account? <a href="/register">Create account</a>
+            Don't have an account?{" "}
+            <Link to="/register">Create account</Link>
           </p>
 
           <div className="login-security">
-            <span>●</span> Your account is protected with secure access.
+            <span>●</span>
+            Your account is protected with secure access.
           </div>
         </div>
       </div>

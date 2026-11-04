@@ -1,12 +1,20 @@
+
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+/* ==============================
+   OMNIX REGISTER PAGE
+================================ */
 
 .register-page {
   min-height: 100vh;
   padding: 30px 7%;
-  background: #f7faff;
+  background: #f0f7f6;
   font-family: "Inter", sans-serif;
-  color: #10264b;
+  color: #173d3a;
+  overflow-x: hidden;
 }
+
+/* Brand */
 
 .register-brand {
   display: flex;
@@ -15,19 +23,23 @@
   font-size: 21px;
   font-weight: 800;
   letter-spacing: 1px;
+  color: #173d3a;
 }
 
 .register-logo {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  border-radius: 11px;
-  background: #693cf4;
-  color: #fff;
+  border-radius: 12px;
+  background: #173d3a;
+  color: #ffffff;
   font-size: 23px;
   font-weight: 800;
+  box-shadow: 0 5px 14px rgba(23, 61, 58, 0.15);
 }
+
+/* Main Layout */
 
 .register-container {
   max-width: 1100px;
@@ -39,12 +51,16 @@
   gap: 65px;
 }
 
+/* Left Information Section */
+
 .register-info {
   padding: 25px 0;
+  animation: registerFadeUp 0.7s ease both;
 }
 
 .register-label {
-  color: #693cf4;
+  display: inline-block;
+  color: #f45b0b;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -52,18 +68,19 @@
 
 .register-info h1 {
   margin: 22px 0 18px;
+  color: #173d3a;
   font-size: clamp(36px, 4vw, 52px);
   line-height: 1.18;
   letter-spacing: -2px;
 }
 
 .register-info h1 span {
-  color: #693cf4;
+  color: #f45b0b;
 }
 
 .register-info > p {
   max-width: 440px;
-  color: #64748b;
+  color: #647c79;
   font-size: 15px;
   line-height: 1.8;
 }
@@ -73,33 +90,45 @@
 }
 
 .register-points p {
-  margin: 15px 0;
-  color: #334b6c;
+  margin: 16px 0;
+  color: #365c57;
   font-size: 14px;
   font-weight: 500;
 }
 
+/* Registration Card */
+
 .register-card {
   width: 100%;
   padding: 36px 42px;
-  border: 1px solid #e5eaf2;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 15px 45px rgba(16, 38, 75, 0.07);
+  border: 1px solid #dceae8;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 18px 55px rgba(23, 61, 58, 0.09);
+  animation: registerFadeUp 0.8s ease both;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
+
+.register-card:hover {
+  box-shadow: 0 22px 60px rgba(23, 61, 58, 0.13);
+}
+
+/* Card Heading */
 
 .register-card-heading h2 {
   margin: 0 0 9px;
-  color: #10264b;
+  color: #173d3a;
   font-size: 27px;
   letter-spacing: -0.7px;
 }
 
 .register-card-heading p {
   margin: 0;
-  color: #64748b;
+  color: #78908c;
   font-size: 13px;
 }
+
+/* Form */
 
 .register-form {
   display: flex;
@@ -109,7 +138,7 @@
 
 .register-form label {
   margin: 0 0 8px;
-  color: #263b59;
+  color: #294c47;
   font-size: 13px;
   font-weight: 600;
 }
@@ -119,24 +148,28 @@
   height: 45px;
   margin-bottom: 17px;
   padding: 0 14px;
-  border: 1px solid #dce3ed;
-  border-radius: 8px;
+  border: 1px solid #d6e4e1;
+  border-radius: 9px;
   outline: none;
-  background: #fbfcfe;
-  color: #10264b;
+  background: #f9fcfb;
+  color: #173d3a;
   font-family: inherit;
   font-size: 13px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .register-form input:focus {
-  border-color: #693cf4;
-  box-shadow: 0 0 0 3px rgba(105, 60, 244, 0.1);
+  border-color: #a8c9c8;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(168, 201, 200, 0.25);
 }
 
 .register-form input::placeholder {
-  color: #9aa8ba;
+  color: #9aadaa;
 }
+
+/* Password Field */
 
 .register-password {
   position: relative;
@@ -152,42 +185,80 @@
   right: 13px;
   border: none;
   background: transparent;
-  color: #693cf4;
+  color: #f45b0b;
   font-family: inherit;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  transition: color 0.2s ease;
 }
+
+.register-password button:hover {
+  color: #c94300;
+}
+
+/* Error and Success Messages */
+
+.register-error,
+.register-success {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.register-error {
+  color: #b42318;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+}
+
+.register-success {
+  color: #176b43;
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+}
+
+/* Submit Button */
 
 .register-submit {
   height: 48px;
   margin-top: 5px;
   border: none;
-  border-radius: 8px;
-  background: #693cf4;
-  color: #fff;
+  border-radius: 9px;
+  background: #f45b0b;
+  color: #ffffff;
   font-family: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s;
+  transition: background 0.2s ease, transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.register-submit:hover {
-  background: #542bd2;
-  transform: translateY(-1px);
+.register-submit:hover:not(:disabled) {
+  background: #dc4c05;
+  transform: translateY(-2px);
+  box-shadow: 0 7px 18px rgba(244, 91, 11, 0.2);
 }
+
+.register-submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Login Link */
 
 .register-login {
   margin-top: 22px;
-  color: #64748b;
+  color: #78908c;
   text-align: center;
   font-size: 12px;
 }
 
 .register-login a {
-  color: #693cf4;
-  font-weight: 600;
+  color: #f45b0b;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -195,22 +266,40 @@
   text-decoration: underline;
 }
 
+/* Registration Note */
+
 .register-note {
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #edf0f5;
-  color: #8492a6;
+  border-top: 1px solid #e8efed;
+  color: #849894;
   text-align: center;
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
-/* Responsive layout */
+/* Animation */
+
+@keyframes registerFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive Layout */
+
 @media (max-width: 850px) {
   .register-container {
     grid-template-columns: 1fr;
     gap: 25px;
     max-width: 500px;
+    min-height: auto;
     margin-top: 30px;
   }
 
@@ -242,5 +331,9 @@
 
   .register-info h1 {
     font-size: 35px;
+  }
+
+  .register-card-heading h2 {
+    font-size: 24px;
   }
 }

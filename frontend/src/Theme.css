@@ -1,37 +1,45 @@
-/* Light Theme */
+/* OMNIX Light Theme */
 :root,
 [data-theme="light"] {
   color-scheme: light;
 
-  --omnix-background: #f5f8fc;
-  --omnix-surface: #ffffff;
-  --omnix-primary: #693cf4;
-  --omnix-primary-light: #a68aff;
-  --omnix-accent: #83c9f5;
-  --omnix-accent-light: #dceeff;
-  --omnix-text: #10264b;
-  --omnix-muted: #64748b;
-  --omnix-border: #e5edf5;
-  --omnix-sidebar: #10264b;
+  --omnix-background: #F0F7F6;
+  --omnix-surface: #FFFFFF;
+
+  --omnix-primary: #174B49;
+  --omnix-primary-light: #A8C9C8;
+
+  --omnix-accent: #F45B0B;
+  --omnix-accent-light: #FFF0E8;
+
+  --omnix-text: #173D3A;
+  --omnix-muted: #718581;
+
+  --omnix-border: #DCE9E7;
+  --omnix-sidebar: #173D3A;
 }
 
-/* Dark Theme */
+/* OMNIX Dark Theme */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --omnix-background: #0b1938;
-  --omnix-surface: #10264b;
-  --omnix-primary: #a68aff;
-  --omnix-primary-light: #693cf4;
-  --omnix-accent: #83c9f5;
-  --omnix-accent-light: #203d68;
-  --omnix-text: #ffffff;
-  --omnix-muted: #aabbd2;
-  --omnix-border: #294267;
-  --omnix-sidebar: #08152e;
+  --omnix-background: #101F20;
+  --omnix-surface: #192D2D;
+
+  --omnix-primary: #A8C9C8;
+  --omnix-primary-light: #315B58;
+
+  --omnix-accent: #F45B0B;
+  --omnix-accent-light: #452B20;
+
+  --omnix-text: #F2F8F7;
+  --omnix-muted: #A4B9B5;
+
+  --omnix-border: #304847;
+  --omnix-sidebar: #102423;
 }
 
-/* Global theme foundation */
+/* Global Theme Foundation */
 html,
 body,
 #root {
@@ -42,5 +50,7 @@ body {
   margin: 0;
   background: var(--omnix-background);
   color: var(--omnix-text);
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
 }

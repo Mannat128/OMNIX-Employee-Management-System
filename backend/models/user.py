@@ -21,7 +21,12 @@ class BaseRequest(BaseModel):
 class LoginRequest(BaseRequest):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
-
+# Employee Registration Request
+class RegisterRequest(BaseRequest):
+    name: str = Field(min_length=2, max_length=100)
+    email: EmailStr
+    department: str = Field(min_length=2, max_length=100)
+    password: str = Field(min_length=8, max_length=128)
 
 # Change Password Request
 class ChangePasswordRequest(BaseRequest):

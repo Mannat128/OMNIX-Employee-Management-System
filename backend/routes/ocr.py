@@ -1,12 +1,12 @@
 
 import csv
 import json
+import re
 
 from io import StringIO, BytesIO
 from pathlib import Path
 
 from bson import ObjectId
-
 from openpyxl import Workbook
 
 from fastapi import (
@@ -34,10 +34,79 @@ router = APIRouter()
 
 
 # -----------------------------------------
+# SENSITIVE DATA MASKING
+# -----------------------------------------
+
+def mask_sensitive_text(value):
+    """
+    Mask Aadhaar and PAN identifiers in text.
+    """
+
+    if not isinstance(value, str):
+        return value
+
+    # Mask Aadhaar numbers
+    def mask_aadhaar(match):
+        digits = re.sub(r"\D", "", match.group(0))
+        return "XXXX XXXX " + digits[-4:]
+
+    value = re.sub(
+        r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)",
+        mask_aadhaar,
+        value
+    )
+
+    # Mask PAN numbers
+    def mask_pan(match):
+        pan = match.group(0).upper()
+        return "XXXXX" + pan[-5:]
+
+    value = re.sub(
+        r"\b[A-Z]{5}\d{4}[A-Z]\b",
+        mask_pan,
+        value,
+        flags=re.IGNORECASE
+    )
+
+    return value
+
+
+def mask_sensitive_data(value):
+    """
+    Recursively mask sensitive identifiers in dictionaries and lists.
+    """
+
+    if isinstance(value, dict):
+        return {
+            key: mask_sensitive_data(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            mask_sensitive_data(item)
+            for item in value
+        ]
+
+    if isinstance(value, str):
+        return mask_sensitive_text(value)
+
+    return value
+
+
+# -----------------------------------------
 # SERIALIZE OCR RESULT
 # -----------------------------------------
 
 def serialize_ocr_result(result):
+
+    extracted_data = mask_sensitive_data(
+        result.get("extracted_data", {})
+    )
+
+    extracted_text = mask_sensitive_text(
+        result.get("extracted_text", "")
+    )
 
     return {
         "id": str(result["_id"]),
@@ -46,8 +115,11 @@ def serialize_ocr_result(result):
         "employee_name": result.get("employee_name", ""),
         "employee_email": result.get("employee_email", ""),
         "document_type": result.get("document_type", ""),
-        "extracted_data": result.get("extracted_data", {}),
-        "extracted_text": result.get("extracted_text", ""),
+        "custom_document_name": result.get(
+            "custom_document_name"
+        ),
+        "extracted_data": extracted_data,
+        "extracted_text": extracted_text,
         "status": result.get("status", "pending"),
         "error": result.get("error"),
         "created_at": (
@@ -214,7 +286,6 @@ def export_ocr_results(
 
     query = {}
 
-    # Individual employee filter
     if employee_id:
 
         if not ObjectId.is_valid(employee_id):
@@ -240,6 +311,7 @@ def export_ocr_results(
         -1
     )
 
+    # All records pass through masking serializer
     records = [
         serialize_ocr_result(result)
         for result in results
@@ -263,16 +335,26 @@ def export_ocr_results(
             }
         )
 
+    # CSV / EXCEL HEADERS
     headers = [
         "Employee Name",
         "Employee Email",
         "Document Type",
+        "Custom Document Name",
         "Extracted Name",
         "Extracted Email",
         "Phone",
+        "Date of Birth",
+        "Gender",
+        "Address",
+        "Document Number (Masked)",
         "Skills",
         "Education",
         "Experience",
+        "Course / Certificate",
+        "Institute",
+        "Issue Date",
+        "Additional Sections",
         "OCR Status"
     ]
 
@@ -286,12 +368,23 @@ def export_ocr_results(
             record.get("employee_name", ""),
             record.get("employee_email", ""),
             record.get("document_type", ""),
+            record.get("custom_document_name") or "",
             data.get("name") or "",
             data.get("email") or "",
             data.get("phone") or "",
-            ", ".join(data.get("skills", [])),
-            json.dumps(data.get("education", [])),
-            json.dumps(data.get("experience", [])),
+            data.get("date_of_birth") or "",
+            data.get("gender") or "",
+            data.get("address") or "",
+            data.get("document_number") or "",
+            ", ".join(data.get("skills", []))
+                if isinstance(data.get("skills"), list)
+                else str(data.get("skills") or ""),
+            json.dumps(data.get("education", []), ensure_ascii=False),
+            json.dumps(data.get("experience", []), ensure_ascii=False),
+            data.get("course_or_certificate") or "",
+            data.get("institute") or "",
+            data.get("issue_date") or "",
+            json.dumps(data.get("sections", {}), ensure_ascii=False),
             record.get("status", "")
         ])
 
@@ -392,10 +485,16 @@ def retry_ocr(
             detail="Document not found"
         )
 
-    if document.get("document_type") != "resume":
+    # Support all four document categories
+    if document.get("document_type") not in {
+        "resume",
+        "id",
+        "certificate",
+        "other"
+    }:
         raise HTTPException(
             status_code=400,
-            detail="OCR retry is available only for resumes"
+            detail="Unsupported document type"
         )
 
     file_path = Path(document.get("file_path", ""))
@@ -406,7 +505,7 @@ def retry_ocr(
             detail="Original document file not found"
         )
 
-    # Atomically change status only if not already processing
+    # Atomically update status
     update_result = documents.update_one(
         {
             "_id": document_object_id,
@@ -441,5 +540,6 @@ def retry_ocr(
     return {
         "message": "OCR retry scheduled successfully",
         "document_id": document_id,
+        "document_type": document.get("document_type"),
         "ocr_status": "pending"
     }

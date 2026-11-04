@@ -1,6 +1,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  UserRound,
+  Mail,
+  Building2,
+  CheckCircle2,
+  XCircle,
+  Clock3,
+  RefreshCw,
+  AlertCircle,
+  LoaderCircle,
+  ClipboardCheck,
+} from "lucide-react";
+
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
 import "./Approvals.css";
 
 const API_URL = "http://127.0.0.1:8000";
@@ -14,11 +29,17 @@ function Approvals() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  const handleUnauthorized = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
+  }, [navigate]);
+
   const fetchPendingUsers = useCallback(async () => {
     const token = localStorage.getItem("access_token");
 
     if (!token) {
-      navigate("/login", { replace: true });
+      handleUnauthorized();
       return;
     }
 
@@ -36,12 +57,10 @@ function Approvals() {
         }
       );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        navigate("/login", { replace: true });
+        handleUnauthorized();
         return;
       }
 
@@ -59,7 +78,7 @@ function Approvals() {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     fetchPendingUsers();
@@ -69,12 +88,12 @@ function Approvals() {
     const token = localStorage.getItem("access_token");
 
     if (!token) {
-      navigate("/login", { replace: true });
+      handleUnauthorized();
       return;
     }
 
     try {
-      setActionLoading(userId);
+      setActionLoading(`${userId}-${action}`);
       setError("");
       setMessage("");
 
@@ -89,174 +108,217 @@ function Approvals() {
         }
       );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        navigate("/login", { replace: true });
+        handleUnauthorized();
         return;
       }
 
       if (!response.ok) {
-        throw new Error(data.detail || "Action could not be completed.");
+        throw new Error(
+          data.detail || "Action could not be completed."
+        );
       }
 
-      setMessage(data.message);
+      setMessage(
+        data.message ||
+          `Employee request ${action === "approve" ? "approved" : "rejected"} successfully.`
+      );
+
       await fetchPendingUsers();
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Something went wrong.");
     } finally {
       setActionLoading("");
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    navigate("/login", { replace: true });
-  };
-
   return (
     <div className="approvals-page">
-      <aside className="approvals-sidebar">
-        <div className="approvals-brand">
-          <span className="approvals-logo">O</span>
-          <span>OMNIX</span>
-        </div>
-
-        <p className="approvals-menu-title">MAIN MENU</p>
-
-        <nav className="approvals-nav">
-          <a href="/admin/dashboard">▦ Dashboard</a>
-          <a href="/employees">♙ Employees</a>
-          <a href="/admin/approvals" className="active">◷ Approvals</a>
-          <a href="/documents">▤ Documents</a>
-          <a href="/admin/settings">⚙ Settings</a>
-        </nav>
-
-        <button
-          type="button"
-          className="approvals-logout"
-          onClick={handleLogout}
-        >
-          ↪ Logout
-        </button>
-      </aside>
+      <Sidebar />
 
       <main className="approvals-main">
-        <header className="approvals-header">
-          <div>
-            <h1>Employee Approvals</h1>
-            <p>Review and manage employee registration requests.</p>
-          </div>
-        </header>
+        <Header />
 
-        <section className="approvals-summary">
-          <div>
-            <span>Pending Requests</span>
-            <h2>{loading ? "..." : pendingUsers.length}</h2>
-          </div>
-
-          <div>
-            <span>Approved Requests</span>
-            <h2>—</h2>
-          </div>
-
-          <div>
-            <span>Rejected Requests</span>
-            <h2>—</h2>
-          </div>
-        </section>
-
-        {error && (
-          <p role="alert" style={{ color: "#dc2626", margin: "15px 0" }}>
-            {error}
-          </p>
-        )}
-
-        {message && (
-          <p role="status" style={{ color: "#15803d", margin: "15px 0" }}>
-            {message}
-          </p>
-        )}
-
-        <section className="approvals-table-card">
-          <div className="approvals-table-heading">
+        <div className="approvals-content">
+          <div className="approvals-page-heading">
             <div>
-              <h2>Registration Requests</h2>
-              <p>Review employee account registration requests.</p>
+              <span className="approvals-eyebrow">
+                ADMINISTRATION
+              </span>
+              <h1>Employee Approvals</h1>
+              <p>
+                Review and manage employee registration requests.
+              </p>
             </div>
 
-            <span className="pending-label">Pending Review</span>
+            <button
+              type="button"
+              className="approvals-refresh-btn"
+              onClick={fetchPendingUsers}
+              disabled={loading}
+              aria-label="Refresh requests"
+            >
+              <RefreshCw size={17} />
+              Refresh
+            </button>
           </div>
 
-          <div className="approvals-table-wrapper">
-            <table className="approvals-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Email Address</th>
-                  <th>Department</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+          <section className="approvals-summary">
+            <div className="approvals-summary-card">
+              <div className="approvals-summary-icon">
+                <Clock3 size={21} />
+              </div>
+              <div>
+                <span>Pending Requests</span>
+                <h2>{loading ? "—" : pendingUsers.length}</h2>
+              </div>
+            </div>
 
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="4">
-                      <div className="approvals-empty">
-                        <p>Loading registration requests...</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : pendingUsers.length > 0 ? (
-                  pendingUsers.map((user) => (
-                    <tr key={user.id}>
-                      <td>{user.name}</td>
-                      <td>{user.email}</td>
-                      <td>{user.department || "Not available"}</td>
-                      <td>
-                        <div className="approval-actions">
-                          <button
-                            type="button"
-                            disabled={actionLoading === user.id}
-                            onClick={() => handleAction(user.id, "approve")}
-                          >
-                            {actionLoading === user.id
-                              ? "Processing..."
-                              : "Approve"}
-                          </button>
+            <div className="approvals-summary-card">
+              <div className="approvals-summary-icon orange">
+                <ClipboardCheck size={21} />
+              </div>
+              <div>
+                <span>Review Queue</span>
+                <h2>{loading ? "—" : pendingUsers.length}</h2>
+              </div>
+            </div>
+          </section>
 
-                          <button
-                            type="button"
-                            disabled={actionLoading === user.id}
-                            onClick={() => handleAction(user.id, "reject")}
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </td>
+          {error && (
+            <div className="approvals-message error" role="alert">
+              <AlertCircle size={18} />
+              {error}
+            </div>
+          )}
+
+          {message && (
+            <div className="approvals-message success" role="status">
+              <CheckCircle2 size={18} />
+              {message}
+            </div>
+          )}
+
+          <section className="approvals-table-card">
+            <div className="approvals-table-heading">
+              <div>
+                <h2>Registration Requests</h2>
+                <p>
+                  Review employee details before approving their account.
+                </p>
+              </div>
+
+              <span className="pending-label">
+                <Clock3 size={14} />
+                Pending Review
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="approvals-empty">
+                <LoaderCircle
+                  size={30}
+                  className="approvals-spinner"
+                />
+                <p>Loading registration requests...</p>
+              </div>
+            ) : pendingUsers.length > 0 ? (
+              <div className="approvals-table-wrapper">
+                <table className="approvals-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Email Address</th>
+                      <th>Department</th>
+                      <th>Actions</th>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4">
-                      <div className="approvals-empty">
-                        <span>◷</span>
-                        <h3>No pending requests</h3>
-                        <p>
-                          New employee registration requests will appear here.
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  </thead>
+
+                  <tbody>
+                    {pendingUsers.map((user) => {
+                      const userId = user.id || user._id;
+
+                      return (
+                        <tr key={userId}>
+                          <td>
+                            <div className="approval-employee">
+                              <div className="approval-avatar">
+                                <UserRound size={18} />
+                              </div>
+                              <strong>{user.name || "Unnamed User"}</strong>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span className="approval-email">
+                              <Mail size={14} />
+                              {user.email || "—"}
+                            </span>
+                          </td>
+
+                          <td>
+                            <span className="approval-department">
+                              <Building2 size={14} />
+                              {user.department || "Not available"}
+                            </span>
+                          </td>
+
+                          <td>
+                            <div className="approval-actions">
+                              <button
+                                type="button"
+                                className="approval-approve-btn"
+                                disabled={!!actionLoading}
+                                onClick={() =>
+                                  handleAction(userId, "approve")
+                                }
+                              >
+                                {actionLoading === `${userId}-approve` ? (
+                                  <LoaderCircle size={15} />
+                                ) : (
+                                  <CheckCircle2 size={15} />
+                                )}
+                                Approve
+                              </button>
+
+                              <button
+                                type="button"
+                                className="approval-reject-btn"
+                                disabled={!!actionLoading}
+                                onClick={() =>
+                                  handleAction(userId, "reject")
+                                }
+                              >
+                                {actionLoading === `${userId}-reject` ? (
+                                  <LoaderCircle size={15} />
+                                ) : (
+                                  <XCircle size={15} />
+                                )}
+                                Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="approvals-empty">
+                <div className="approvals-empty-icon">
+                  <ClipboardCheck size={28} />
+                </div>
+                <h3>No Pending Requests</h3>
+                <p>
+                  New employee registration requests will appear here.
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
       </main>
     </div>
   );

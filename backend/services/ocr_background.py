@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 def process_ocr_background(document_id: str):
     """
-    Process uploaded resume in the background
-    and save extracted OCR results in MongoDB.
+    Process uploaded documents in background
+    and save OCR results in MongoDB.
+    Supports Resume, ID Proof, Certificate and Other.
     """
 
     if not ObjectId.is_valid(document_id):
@@ -31,16 +32,8 @@ def process_ocr_background(document_id: str):
         logger.error("Document not found: %s", document_id)
         return
 
-    if document.get("document_type") != "resume":
-        logger.warning(
-            "OCR skipped: Document is not a resume. ID: %s",
-            document_id
-        )
-        return
-
     try:
-
-        # Update document status to processing
+        # Update status to processing
         documents.update_one(
             {"_id": document_object_id},
             {
@@ -56,15 +49,19 @@ def process_ocr_background(document_id: str):
             }
         )
 
-        # Process resume using OCR service
-        result = process_document(document["file_path"])
+        # Process document according to its category
+        result = process_document(
+            file_path=document["file_path"],
+            document_type=document.get("document_type", "other"),
+            custom_document_name=document.get("custom_document_name")
+        )
 
         extracted_data = result["extracted_data"]
         extracted_text = result["extracted_text"]
 
         completed_at = datetime.now(timezone.utc)
 
-        # Save extracted OCR results
+        # Save OCR results
         ocr_results.update_one(
             {"document_id": document_object_id},
             {
@@ -72,7 +69,8 @@ def process_ocr_background(document_id: str):
                     "employee_id": document["employee_id"],
                     "employee_name": document.get("employee_name", ""),
                     "employee_email": document.get("employee_email", ""),
-                    "document_type": document["document_type"],
+                    "document_type": document.get("document_type", "other"),
+                    "custom_document_name": document.get("custom_document_name"),
                     "extracted_data": extracted_data,
                     "extracted_text": extracted_text,
                     "status": "completed",
@@ -86,7 +84,7 @@ def process_ocr_background(document_id: str):
             upsert=True
         )
 
-        # Update document status to completed
+        # Update document status
         documents.update_one(
             {"_id": document_object_id},
             {
@@ -104,7 +102,6 @@ def process_ocr_background(document_id: str):
         )
 
     except Exception as error:
-
         error_message = str(error)
         failed_at = datetime.now(timezone.utc)
 
@@ -113,7 +110,7 @@ def process_ocr_background(document_id: str):
             document_id
         )
 
-        # Update document status to failed
+        # Update document failure status
         documents.update_one(
             {"_id": document_object_id},
             {
@@ -128,7 +125,7 @@ def process_ocr_background(document_id: str):
             }
         )
 
-        # Preserve failure information in OCR collection
+        # Save failure information
         ocr_results.update_one(
             {"document_id": document_object_id},
             {
@@ -136,7 +133,8 @@ def process_ocr_background(document_id: str):
                     "employee_id": document["employee_id"],
                     "employee_name": document.get("employee_name", ""),
                     "employee_email": document.get("employee_email", ""),
-                    "document_type": document["document_type"],
+                    "document_type": document.get("document_type", "other"),
+                    "custom_document_name": document.get("custom_document_name"),
                     "status": "failed",
                     "error": error_message,
                     "updated_at": failed_at

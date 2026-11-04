@@ -1,6 +1,19 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  LockKeyhole,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  ArrowLeft,
+  CheckCircle2,
+  AlertCircle,
+  LoaderCircle,
+} from "lucide-react";
+
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
 import "./ChangePassword.css";
 
 const API_URL = "http://127.0.0.1:8000";
@@ -16,11 +29,34 @@ function ChangePassword() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  let user = {};
+
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    user = {};
+  }
+
+  const role = user.role?.toLowerCase() || "employee";
+
+  const profilePath =
+    role === "admin" ? "/admin/profile" : "/employee/profile";
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     setMessage("");
     setError("");
+
+    if (newPassword.length < 8) {
+      setError("New password must contain at least 8 characters.");
+      return;
+    }
+
+    if (newPassword.length > 128) {
+      setError("New password cannot exceed 128 characters.");
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       setError("New password and confirmation do not match.");
@@ -42,31 +78,38 @@ function ChangePassword() {
     try {
       setLoading(true);
 
-      const response = await fetch(
-        `${API_URL}/change-password`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            current_password: currentPassword,
-            new_password: newPassword,
-            confirm_password: confirmPassword,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/change-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          confirm_password: confirmPassword,
+        }),
+      });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+        navigate("/login", { replace: true });
+        return;
+      }
 
       if (!response.ok) {
-        throw new Error(data.detail || "Unable to update password.");
+        throw new Error(
+          data.detail || "Unable to update password. Please try again."
+        );
       }
 
       setMessage(data.message || "Password changed successfully.");
 
-      // Backend increments session_version, so the old token is invalid.
+      // Clear old session after successful password change
       localStorage.removeItem("access_token");
       localStorage.removeItem("user");
 
@@ -75,7 +118,11 @@ function ChangePassword() {
       setConfirmPassword("");
 
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message === "Failed to fetch"
+          ? "Unable to connect to the server. Please try again."
+          : err.message
+      );
     } finally {
       setLoading(false);
     }
@@ -83,111 +130,248 @@ function ChangePassword() {
 
   return (
     <div className="change-password-page">
-      <aside className="password-sidebar">
-        <div className="password-brand">
-          <span className="password-logo">O</span>
-          <span>OMNIX</span>
-        </div>
 
-        <p className="password-menu-title">ACCOUNT</p>
-
-        <nav className="password-nav">
-          <a href="/admin/dashboard">▦ Dashboard</a>
-          <a href="/admin/profile">◉ My Profile</a>
-          <a href="/admin/settings">⚙ Settings</a>
-        </nav>
-
-        <a href="/login" className="password-logout">↪ Logout</a>
-      </aside>
+      <Sidebar />
 
       <main className="password-main">
-        <header className="password-header">
-          <div>
-            <h1>Change Password</h1>
-            <p>Update your account password.</p>
+        <Header />
+
+        <div className="password-content">
+
+          {/* Page Heading */}
+          <div className="password-page-heading">
+            <div>
+              <span className="password-eyebrow">
+                ACCOUNT SECURITY
+              </span>
+
+              <h1>Change Password</h1>
+
+              <p>
+                Keep your OMNIX account safe and secure.
+              </p>
+            </div>
+
+            {!message && (
+              <button
+                type="button"
+                className="password-back"
+                onClick={() => navigate(profilePath)}
+              >
+                <ArrowLeft size={16} />
+                Back to Profile
+              </button>
+            )}
           </div>
 
-          <a href="/admin/profile" className="password-back">
-            ← Back to Profile
-          </a>
-        </header>
+          {/* Password Card */}
+          <section className="password-card">
 
-        <section className="password-card">
-          <div className="password-card-heading">
-            <h2>Password Security</h2>
-            <p>Enter your current and new password below.</p>
-          </div>
+            <div className="password-card-banner">
+              <div className="password-card-icon">
+                <LockKeyhole size={25} />
+              </div>
 
-          <form className="password-form" onSubmit={handleSubmit}>
-            <div className="password-form-group">
-              <label htmlFor="currentPassword">Current Password</label>
-              <input
-                id="currentPassword"
-                type={showPasswords ? "text" : "password"}
-                placeholder="Enter current password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-              />
+              <div>
+                <h2>Password Security</h2>
+                <p>
+                  Update your password to protect your account.
+                </p>
+              </div>
             </div>
 
-            <div className="password-form-group">
-              <label htmlFor="newPassword">New Password</label>
-              <input
-                id="newPassword"
-                type={showPasswords ? "text" : "password"}
-                placeholder="Enter new password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                minLength={8}
-                required
-              />
-            </div>
-
-            <div className="password-form-group">
-              <label htmlFor="confirmPassword">Confirm New Password</label>
-              <input
-                id="confirmPassword"
-                type={showPasswords ? "text" : "password"}
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                minLength={8}
-                required
-              />
-            </div>
-
-            <label className="password-show-option">
-              <input
-                type="checkbox"
-                checked={showPasswords}
-                onChange={(e) => setShowPasswords(e.target.checked)}
-              />
-              Show passwords
-            </label>
-
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            {message && <p style={{ color: "green" }}>{message}</p>}
-
+            {/* Success State */}
             {message ? (
-              <div className="password-actions">
+              <div className="password-success-state">
+
+                <div className="password-success-icon">
+                  <CheckCircle2 size={32} />
+                </div>
+
+                <h2>Password Updated!</h2>
+
+                <p>{message}</p>
+
+                <p className="password-session-note">
+                  For your security, please log in again using your new
+                  password.
+                </p>
+
                 <button
                   type="button"
-                  onClick={() => navigate("/login")}
+                  className="password-submit-btn"
+                  onClick={() => navigate("/login", { replace: true })}
                 >
-                  Login Again →
+                  Login Again
+                  <ArrowLeft size={16} />
                 </button>
+
               </div>
             ) : (
-              <div className="password-actions">
-                <a href="/admin/profile">Cancel</a>
-                <button type="submit" disabled={loading}>
-                  {loading ? "Updating..." : "Update Password →"}
-                </button>
-              </div>
+
+              /* Password Form */
+              <form
+                className="password-form"
+                onSubmit={handleSubmit}
+              >
+
+                {/* Current Password */}
+                <div className="password-form-group">
+                  <label htmlFor="currentPassword">
+                    Current Password
+                  </label>
+
+                  <div className="password-input-wrapper">
+                    <LockKeyhole size={17} />
+
+                    <input
+                      id="currentPassword"
+                      type={showPasswords ? "text" : "password"}
+                      placeholder="Enter current password"
+                      value={currentPassword}
+                      onChange={(e) =>
+                        setCurrentPassword(e.target.value)
+                      }
+                      autoComplete="current-password"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* New Password */}
+                <div className="password-form-group">
+                  <label htmlFor="newPassword">
+                    New Password
+                  </label>
+
+                  <div className="password-input-wrapper">
+                    <LockKeyhole size={17} />
+
+                    <input
+                      id="newPassword"
+                      type={showPasswords ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) =>
+                        setNewPassword(e.target.value)
+                      }
+                      minLength={8}
+                      maxLength={128}
+                      autoComplete="new-password"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Confirm Password */}
+                <div className="password-form-group">
+                  <label htmlFor="confirmPassword">
+                    Confirm New Password
+                  </label>
+
+                  <div className="password-input-wrapper">
+                    <LockKeyhole size={17} />
+
+                    <input
+                      id="confirmPassword"
+                      type={showPasswords ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) =>
+                        setConfirmPassword(e.target.value)
+                      }
+                      minLength={8}
+                      maxLength={128}
+                      autoComplete="new-password"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Show Password */}
+                <label className="password-show-option">
+                  <input
+                    type="checkbox"
+                    checked={showPasswords}
+                    onChange={(e) =>
+                      setShowPasswords(e.target.checked)
+                    }
+                  />
+
+                  <span>
+                    {showPasswords ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
+
+                    Show passwords
+                  </span>
+                </label>
+
+                {/* Security Note */}
+                <div className="password-security-note">
+                  <ShieldCheck size={19} />
+
+                  <p>
+                    Use at least 8 characters. Avoid using a password
+                    that you have used before.
+                  </p>
+                </div>
+
+                {/* Error Message */}
+                {error && (
+                  <div
+                    className="password-message error"
+                    role="alert"
+                  >
+                    <AlertCircle size={17} />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="password-actions">
+
+                  <button
+                    type="button"
+                    className="password-cancel-btn"
+                    onClick={() => navigate(profilePath)}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="password-submit-btn"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <LoaderCircle
+                          size={17}
+                          className="password-spinner"
+                        />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        Update Password
+                        <ArrowLeft
+                          className="password-arrow"
+                          size={16}
+                        />
+                      </>
+                    )}
+                  </button>
+
+                </div>
+              </form>
             )}
-          </form>
-        </section>
+
+          </section>
+        </div>
       </main>
     </div>
   );

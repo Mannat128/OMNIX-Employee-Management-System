@@ -1,102 +1,198 @@
 
 .omnix-header {
-  min-height: 76px;
-  padding: 15px 30px;
-  background: #ffffff;
-  border-bottom: 1px solid #e7eaf1;
+  min-height: 105px;
+  padding: 18px 30px;
+  background: #A8C9C8;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 24px;
+  font-family: inherit;
+}
+
+.omnix-header-title {
+  min-width: 0;
+}
+
+.omnix-header-breadcrumb {
+  display: block;
+  margin-bottom: 5px;
+  color: #315A57;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.3px;
 }
 
 .omnix-header-title h1 {
-  margin: 0 0 5px;
-  color: #10264b;
-  font-size: 21px;
-  font-weight: 700;
+  margin: 0;
+  color: #173D3A;
+  font-size: clamp(22px, 2.2vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.8px;
+}
+
+.omnix-greeting-wave {
+  font-size: 23px;
 }
 
 .omnix-header-title p {
-  color: #8994a6;
-  font-size: 12px;
-}
-
-.omnix-header-title p span {
-  padding: 0 6px;
-  color: #c0c5d0;
+  margin: 6px 0 0;
+  color: #526E6B;
+  font-size: 13px;
 }
 
 .omnix-header-right {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 17px;
 }
 
-.omnix-notification-btn {
-  width: 38px;
-  height: 38px;
-  border: 1px solid #e7eaf1;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #53647d;
-  font-size: 19px;
-  cursor: pointer;
-}
-
-.omnix-notification-btn:hover {
-  background: #f6f3ff;
-  color: #693cf4;
-}
-
-.omnix-header-user {
+/* Search */
+.omnix-search {
+  width: 260px;
+  height: 43px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   gap: 10px;
+  background: #FFFFFF;
+  border: 1px solid #E7F0EF;
+  border-radius: 30px;
+  color: #52716E;
+  transition: box-shadow 0.2s ease;
+}
+
+.omnix-search:focus-within {
+  box-shadow: 0 0 0 3px rgba(244, 91, 11, 0.13);
+}
+
+.omnix-search input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #173D3A;
+  font-size: 12px;
+}
+
+.omnix-search input::placeholder {
+  color: #93A5A2;
+}
+
+/* Notifications */
+.omnix-notification-btn {
+  width: 41px;
+  height: 41px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,0.8);
+  border-radius: 50%;
+  background: #FFFFFF;
+  color: #173D3A;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.omnix-notification-btn:hover {
+  color: #F45B0B;
+  transform: translateY(-2px);
+}
+
+.omnix-notification-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #F45B0B;
+  border: 1px solid white;
+}
+
+/* User profile */
+.omnix-header-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 30px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
 }
 
 .omnix-header-avatar {
-  width: 38px;
-  height: 38px;
+  width: 39px;
+  height: 39px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #eee9ff;
-  color: #693cf4;
-  font-weight: 700;
+  background: #173D3A;
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 750;
 }
 
-.omnix-header-user div:last-child {
+.omnix-header-user-info {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.omnix-header-user strong {
-  color: #10264b;
+.omnix-header-user-info strong {
+  color: #173D3A;
   font-size: 12px;
 }
 
-.omnix-header-user span {
-  color: #8994a6;
-  font-size: 11px;
+.omnix-header-user-info span {
+  color: #52716E;
+  font-size: 10px;
   text-transform: capitalize;
 }
 
-@media (max-width: 600px) {
-  .omnix-header {
-    padding: 13px 16px;
-  }
+.omnix-header-user > svg {
+  color: #315A57;
+}
 
-  .omnix-header-title h1 {
-    font-size: 18px;
+/* Responsive */
+@media (max-width: 850px) {
+  .omnix-header {
+    padding: 16px 18px;
+    flex-wrap: wrap;
   }
 
   .omnix-header-right {
-    gap: 10px;
+    width: 100%;
+    justify-content: flex-end;
   }
 
-  .omnix-header-user div:last-child {
+  .omnix-search {
+    flex: 1;
+    max-width: 350px;
+  }
+}
+
+@media (max-width: 520px) {
+  .omnix-header-title h1 {
+    font-size: 21px;
+  }
+
+  .omnix-header-title p {
+    font-size: 11px;
+  }
+
+  .omnix-header-right {
+    gap: 8px;
+  }
+
+  .omnix-header-user-info,
+  .omnix-header-user > svg {
     display: none;
+  }
+
+  .omnix-search {
+    min-width: 0;
   }
 }

@@ -1,8 +1,16 @@
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Depends, status
+from pymongo.errors import DuplicateKeyError
 
 from database.connection import users, employees
-from models.user import LoginRequest, ChangePasswordRequest
+
+from models.user import (
+    LoginRequest,
+    RegisterRequest,
+    ChangePasswordRequest
+)
 
 from core.security import (
     hash_password,
@@ -16,16 +24,72 @@ from dependencies.auth import get_current_user
 router = APIRouter()
 
 
+# ==========================================
+# USER REGISTRATION
+# ==========================================
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+def register_user(data: RegisterRequest):
+
+    email = str(data.email).lower().strip()
+
+    # Check whether email already exists
+    if users.find_one({"email": email}) or employees.find_one(
+        {"email": email}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered"
+        )
+
+    # Prepare new employee account
+    user_data = {
+        "name": data.name.strip(),
+        "email": email,
+        "department": data.department.strip(),
+        "password": hash_password(data.password),
+        "role": "employee",
+        "status": "pending",
+        "mustChangePassword": False,
+        "session_version": 0,
+        "created_at": datetime.now(timezone.utc)
+    }
+
+    try:
+        result = users.insert_one(user_data)
+
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered"
+        )
+
+    return {
+        "message": (
+            "Registration successful. "
+            "Please wait for admin approval."
+        ),
+        "user_id": str(result.inserted_id),
+        "status": "pending"
+    }
+
+
+# ==========================================
 # USER LOGIN
+# ==========================================
+
 @router.post("/login")
 def login(data: LoginRequest):
 
-    email = str(data.email).lower()
+    email = str(data.email).lower().strip()
 
     user = users.find_one({"email": email})
 
     # Validate credentials
-    if not user or not verify_password(data.password, user["password"]):
+    if not user or not verify_password(
+        data.password,
+        user["password"]
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -76,7 +140,9 @@ def login(data: LoginRequest):
     return {
         "access_token": token,
         "token_type": "bearer",
-        "mustChangePassword": user.get("mustChangePassword", False),
+        "mustChangePassword": user.get(
+            "mustChangePassword", False
+        ),
         "user": {
             "id": str(user["_id"]),
             "name": user["name"],
@@ -87,7 +153,10 @@ def login(data: LoginRequest):
     }
 
 
+# ==========================================
 # CHANGE PASSWORD
+# ==========================================
+
 @router.post("/change-password")
 def change_password(
     data: ChangePasswordRequest,
@@ -104,9 +173,7 @@ def change_password(
             detail="Current password is incorrect"
         )
 
-    # Password mismatch and same-password checks
-    # are already handled by ChangePasswordRequest model.
-
+    # Update password and invalidate existing sessions
     result = users.update_one(
         {
             "_id": current_user["_id"],
@@ -134,7 +201,10 @@ def change_password(
     }
 
 
+# ==========================================
 # GET CURRENT USER PROFILE
+# ==========================================
+
 @router.get("/me")
 def get_profile(
     current_user: dict = Depends(get_current_user)

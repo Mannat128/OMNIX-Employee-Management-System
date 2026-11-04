@@ -3,36 +3,51 @@
    OMNIX - GLOBAL DESIGN SYSTEM
 ======================================== */
 
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
 :root {
-  /* Brand colors */
-  --primary: #693cf4;
-  --primary-dark: #542bd0;
-  --primary-light: #eee9ff;
-  --primary-soft: #f6f3ff;
+  /* Brand Colors */
+  --primary: #174B49;
+  --primary-dark: #173D3A;
+  --primary-light: #DCEDEC;
+  --primary-soft: #F0F7F6;
 
-  /* Background colors */
-  --bg: #f7f9fc;
-  --surface: #ffffff;
-  --surface-hover: #faf9ff;
+  --powder-blue: #A8C9C8;
+  --powder-blue-light: #EAF3F2;
 
-  /* Text colors */
-  --text-primary: #10264b;
-  --text-secondary: #77849a;
-  --text-muted: #9ba5b5;
+  --orange: #F45B0B;
+  --orange-dark: #DC4C05;
+  --orange-light: #FFF0E8;
 
-  /* Border and shadow */
-  --border: #e7eaf1;
-  --border-focus: #693cf4;
-  --shadow-sm: 0 2px 8px rgba(16, 38, 75, 0.04);
-  --shadow-md: 0 6px 20px rgba(16, 38, 75, 0.07);
+  --dark-teal: #173D3A;
 
-  /* Status colors */
-  --success: #21834b;
-  --success-bg: #e8f8ee;
-  --danger: #d64545;
-  --danger-bg: #fff0f0;
-  --warning: #c45c2c;
-  --warning-bg: #fff0e9;
+  /* Background Colors */
+  --bg: #F0F7F6;
+  --surface: #FFFFFF;
+  --surface-hover: #F7FBFA;
+
+  /* Text Colors */
+  --text-primary: #173D3A;
+  --text-secondary: #647C79;
+  --text-muted: #91A5A1;
+
+  /* Border and Shadow */
+  --border: #DCEAE8;
+  --border-focus: #A8C9C8;
+
+  --shadow-sm: 0 2px 8px rgba(23, 61, 58, 0.04);
+  --shadow-md: 0 6px 20px rgba(23, 61, 58, 0.07);
+  --shadow-lg: 0 15px 40px rgba(23, 61, 58, 0.09);
+
+  /* Status Colors */
+  --success: #21834B;
+  --success-bg: #E8F8EE;
+
+  --danger: #D64545;
+  --danger-bg: #FFF0F0;
+
+  --warning: #C45C2C;
+  --warning-bg: #FFF0E9;
 
   /* Typography */
   --sans: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
@@ -40,7 +55,14 @@
 
   /* Layout */
   --sidebar-width: 250px;
+  --sidebar-collapsed-width: 70px;
   --header-height: 72px;
+
+  /* Common Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
 
   font-family: var(--sans);
   font-size: 14px;
@@ -129,7 +151,8 @@ button,
 input,
 select,
 textarea {
-  font: inherit;
+  font-family: var(--sans);
+  font-size: inherit;
 }
 
 button {
@@ -165,6 +188,24 @@ textarea:focus {
   color: var(--text-muted);
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--powder-blue);
+  outline-offset: 3px;
+}
+
+/* ========================================
+   COMMON BUTTON HOVER
+======================================== */
+
+button {
+  transition: background 0.2s ease, color 0.2s ease,
+    border-color 0.2s ease;
+}
+
 /* ========================================
    SCROLLBAR
 ======================================== */
@@ -175,16 +216,25 @@ textarea:focus {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f2f6;
+  background: #EDF4F3;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c9c4da;
+  background: #B7CECB;
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a99bcf;
+  background: #829F9A;
+}
+
+/* ========================================
+   SELECTION
+======================================== */
+
+::selection {
+  background: #A8C9C8;
+  color: #173D3A;
 }
 
 /* ========================================
@@ -198,5 +248,16 @@ textarea:focus {
 
   h2 {
     font-size: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

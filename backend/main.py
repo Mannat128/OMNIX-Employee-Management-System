@@ -1,5 +1,6 @@
 
 import os
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,10 +20,16 @@ from routes.admin import router as admin_router
 from routes.employees import router as employee_router
 from routes.documents import router as documents_router
 from routes.ocr import router as ocr_router
+from routes.profile import router as profile_router
 
 
-# Profile photo directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ==========================================
+# PROFILE PHOTO DIRECTORY
+# ==========================================
+
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 PROFILE_PHOTO_DIR = os.path.join(
     BASE_DIR,
@@ -30,14 +37,21 @@ PROFILE_PHOTO_DIR = os.path.join(
     "profile_photos"
 )
 
-os.makedirs(PROFILE_PHOTO_DIR, exist_ok=True)
+os.makedirs(
+    PROFILE_PHOTO_DIR,
+    exist_ok=True
+)
 
 
-# MongoDB connection and indexes
+# ==========================================
+# MONGODB CONNECTION AND INDEXES
+# ==========================================
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
     try:
+
         # Check MongoDB connection
         client.admin.command("ping")
 
@@ -92,23 +106,32 @@ async def lifespan(app: FastAPI):
         yield
 
     finally:
+
         client.close()
+
         print("MongoDB connection closed.")
 
 
-# Create FastAPI application
+# ==========================================
+# CREATE FASTAPI APPLICATION
+# ==========================================
+
 app = FastAPI(
     title="Employee Management System API",
     description=(
         "Employee Management System with Admin and Employee "
-        "Authentication, Document Management and OCR."
+        "Authentication, Profile Management, Document Management "
+        "and OCR."
     ),
     version="1.0.0",
     lifespan=lifespan
 )
 
 
-# CORS configuration
+# ==========================================
+# CORS CONFIGURATION
+# ==========================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -121,15 +144,23 @@ app.add_middleware(
 )
 
 
-# Serve profile photos
+# ==========================================
+# SERVE PROFILE PHOTOS
+# ==========================================
+
 app.mount(
     "/uploads/profile_photos",
-    StaticFiles(directory=PROFILE_PHOTO_DIR),
+    StaticFiles(
+        directory=PROFILE_PHOTO_DIR
+    ),
     name="profile_photos"
 )
 
 
-# Register API routers
+# ==========================================
+# REGISTER API ROUTERS
+# ==========================================
+
 app.include_router(
     auth_router,
     prefix="/auth",
@@ -160,21 +191,36 @@ app.include_router(
     tags=["OCR"]
 )
 
+# NEW PROFILE ROUTES
+app.include_router(
+    profile_router,
+    prefix="/profile",
+    tags=["Profile Management"]
+)
 
-# Root endpoint
+
+# ==========================================
+# ROOT ENDPOINT
+# ==========================================
+
 @app.get("/")
 def home():
+
     return {
         "message": "Employee Management System API is running!",
         "status": "success"
     }
 
 
-# Database health check
+# ==========================================
+# DATABASE HEALTH CHECK
+# ==========================================
+
 @app.get("/db-check")
 def database_check():
 
     try:
+
         client.admin.command("ping")
 
         return {
@@ -183,6 +229,7 @@ def database_check():
         }
 
     except Exception:
+
         return {
             "message": "MongoDB connection failed",
             "status": "disconnected"

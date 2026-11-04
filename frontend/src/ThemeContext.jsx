@@ -4,17 +4,26 @@ const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("omnix-theme") || "light";
+    try {
+      return localStorage.getItem("omnix-theme") || "light";
+    } catch {
+      return "light";
+    }
   });
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("omnix-theme", theme);
+
+    try {
+      localStorage.setItem("omnix-theme", theme);
+    } catch {
+      // Theme still works for the current session.
+    }
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((currentTheme) =>
-      currentTheme === "light" ? "dark" : "light"
+    setTheme((current) =>
+      current === "light" ? "dark" : "light"
     );
   };
 

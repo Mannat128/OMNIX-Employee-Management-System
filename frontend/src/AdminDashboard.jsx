@@ -1,6 +1,18 @@
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  Users,
+  UserCheck,
+  Clock3,
+  Building2,
+  ArrowUpRight,
+  Plus,
+  FileText,
+  ClipboardCheck,
+  BriefcaseBusiness,
+} from "lucide-react";
+
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import "./AdminDashboard.css";
@@ -39,10 +51,8 @@ function AdminDashboard() {
         const pendingData = await pendingResponse.json();
 
         if (
-          employeeResponse.status === 401 ||
-          employeeResponse.status === 403 ||
-          pendingResponse.status === 401 ||
-          pendingResponse.status === 403
+          [401, 403].includes(employeeResponse.status) ||
+          [401, 403].includes(pendingResponse.status)
         ) {
           localStorage.removeItem("access_token");
           localStorage.removeItem("user");
@@ -81,7 +91,7 @@ function AdminDashboard() {
   const departments = [
     ...new Set(
       employees
-        .map((employee) => employee.department)
+        .map((employee) => employee.department?.trim())
         .filter(Boolean)
     ),
   ];
@@ -93,27 +103,31 @@ function AdminDashboard() {
   const stats = [
     {
       title: "Total Employees",
-      value: loading ? "..." : employees.length,
-      icon: "♙",
-      color: "purple",
+      value: employees.length,
+      icon: Users,
+      className: "workforce-stat-orange",
+      note: "Registered employees",
     },
     {
       title: "Pending Approvals",
-      value: loading ? "..." : pendingUsers.length,
-      icon: "◷",
-      color: "orange",
+      value: pendingUsers.length,
+      icon: Clock3,
+      className: "workforce-stat-white",
+      note: pendingUsers.length ? "Require your attention" : "All clear",
     },
     {
       title: "Departments",
-      value: loading ? "..." : departments.length,
-      icon: "▦",
-      color: "blue",
+      value: departments.length,
+      icon: Building2,
+      className: "workforce-stat-teal",
+      note: "Across your organization",
     },
     {
       title: "Active Employees",
-      value: loading ? "..." : activeEmployees,
-      icon: "✓",
-      color: "green",
+      value: activeEmployees,
+      icon: UserCheck,
+      className: "workforce-stat-white",
+      note: "Currently active",
     },
   ];
 
@@ -125,83 +139,138 @@ function AdminDashboard() {
         <Header />
 
         <div className="admin-dashboard-content">
-          <section className="admin-welcome">
-            <div>
-              <span>ADMIN OVERVIEW</span>
-              <h2>Manage your workforce with confidence.</h2>
-              <p>
-                Manage employees, approvals and documents from one place.
-              </p>
-            </div>
-
-            <div className="welcome-icon">✦</div>
-          </section>
-
           {error && (
-            <p className="admin-error" role="alert">
+            <div className="admin-error" role="alert">
               {error}
-            </p>
+            </div>
           )}
 
-          <section className="admin-stats">
-            {stats.map((stat) => (
-              <article className="admin-stat-card" key={stat.title}>
-                <div className="stat-top">
-                  <span>{stat.title}</span>
-                  <div className={`stat-icon ${stat.color}`}>
-                    {stat.icon}
-                  </div>
-                </div>
+          {/* Workforce overview */}
+          <section className="workforce-overview">
+            <div className="workforce-intro">
+              <span className="workforce-eyebrow">
+                YOUR WORKFORCE
+              </span>
 
-                <h2>{stat.value}</h2>
+              <div className="workforce-message">
+                <strong>{loading ? "—" : employees.length}</strong>
+                <h2>
+                  people,
+                  <br />
+                  one team.
+                </h2>
+              </div>
 
-                <small>Live database information</small>
-              </article>
-            ))}
+              <div className="workforce-avatars" aria-label="Employee team">
+                {employees.slice(0, 3).map((employee, index) => (
+                  <span key={employee.id || employee.email || index}>
+                    {employee.name?.charAt(0)?.toUpperCase() || "E"}
+                  </span>
+                ))}
+
+                {employees.length > 3 && (
+                  <span>+{employees.length - 3}</span>
+                )}
+
+                {employees.length === 0 && !loading && (
+                  <span>0</span>
+                )}
+              </div>
+            </div>
+
+            <div className="workforce-decoration" aria-hidden="true">
+              <div className="workforce-circle circle-one" />
+              <div className="workforce-circle circle-two" />
+              <div className="workforce-office-icon">
+                <BriefcaseBusiness size={48} strokeWidth={1.4} />
+              </div>
+              <div className="workforce-decoration-caption">
+                PEOPLE · DOCUMENTS · TEAMWORK
+              </div>
+            </div>
           </section>
 
+          {/* Statistics */}
+          <section className="admin-stats">
+            {stats.map((stat) => {
+              const Icon = stat.icon;
+
+              return (
+                <article
+                  className={`admin-stat-card ${stat.className}`}
+                  key={stat.title}
+                >
+                  <div className="stat-top">
+                    <span>{stat.title}</span>
+                    <Icon size={21} strokeWidth={1.8} />
+                  </div>
+
+                  <h2>{loading ? "—" : stat.value}</h2>
+
+                  <small>
+                    {loading ? "Loading information..." : stat.note}
+                  </small>
+                </article>
+              );
+            })}
+          </section>
+
+          {/* Recent employees and quick actions */}
           <section className="admin-content-grid">
             <div className="admin-panel employee-panel">
               <div className="panel-heading">
                 <div>
                   <h3>Recent Employees</h3>
-                  <p>Employee records from your database</p>
+                  <p>Your organization's employee records</p>
                 </div>
 
-                <Link to="/employees">View all →</Link>
+                <Link to="/employees" className="view-all-link">
+                  View all <ArrowUpRight size={15} />
+                </Link>
               </div>
 
               {loading ? (
                 <div className="admin-empty-state">
-                  <p>Loading employee records...</p>
+                  Loading employee records...
                 </div>
               ) : employees.length > 0 ? (
                 <div className="admin-employee-list">
-                  {employees.slice(0, 5).map((employee) => (
+                  {employees.slice(0, 5).map((employee, index) => (
                     <div
-                      key={employee.id}
+                      key={employee.id || employee.email || index}
                       className="admin-employee-row"
                     >
                       <div className="admin-avatar">
-                        {employee.name?.charAt(0)?.toUpperCase() || "U"}
+                        {employee.name?.charAt(0)?.toUpperCase() || "E"}
                       </div>
 
-                      <div>
-                        <strong>{employee.name || "—"}</strong>
-                        <small>{employee.email || "—"}</small>
+                      <div className="employee-row-info">
+                        <strong>{employee.name || "Unnamed employee"}</strong>
+                        <small>
+                          {employee.department || "Department not specified"}
+                        </small>
                       </div>
 
-                      <span>{employee.department || "—"}</span>
+                      <span
+                        className={`employee-status ${
+                          employee.employment_status === "Active"
+                            ? "status-active"
+                            : "status-inactive"
+                        }`}
+                      >
+                        {employee.employment_status || "Unknown"}
+                      </span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="admin-empty-state">
-                  <div>♙</div>
-                  <h3>No employee records available</h3>
-                  <p>
-                    Employee records will appear here when available.
-                  </p>
+                  <Users size={28} />
+                  <h3>No employees yet</h3>
+                  <p>Add your first employee to get started.</p>
+                  <Link to="/employees/add" className="empty-add-link">
+                    <Plus size={16} /> Add employee
+                  </Link>
                 </div>
               )}
             </div>
@@ -210,45 +279,41 @@ function AdminDashboard() {
               <div className="panel-heading">
                 <div>
                   <h3>Quick Actions</h3>
-                  <p>Administrative sections</p>
+                  <p>Manage your workplace</p>
                 </div>
               </div>
 
-              <Link to="/employees" className="quick-action">
-                <span className="quick-action-icon">♙</span>
+              <Link to="/employees/add" className="quick-action quick-orange">
                 <span>
-                  <strong>Manage Employees</strong>
-                  <small>View employee records</small>
+                  <Plus size={18} />
                 </span>
-                <b>→</b>
+                <strong>Add employee</strong>
+                <ArrowUpRight size={17} />
               </Link>
 
-              <Link to="/admin/approvals" className="quick-action">
-                <span className="quick-action-icon">✓</span>
+              <Link
+                to="/admin/approvals"
+                className="quick-action quick-teal"
+              >
                 <span>
-                  <strong>Review Approvals</strong>
-                  <small>
-                    {loading
-                      ? "Loading..."
-                      : `${pendingUsers.length} pending registrations`}
-                  </small>
+                  <ClipboardCheck size={18} />
                 </span>
-                <b>→</b>
+                <strong>Review approvals</strong>
+                <ArrowUpRight size={17} />
               </Link>
 
-              <Link to="/documents" className="quick-action">
-                <span className="quick-action-icon">▤</span>
+              <Link to="/documents" className="quick-action quick-blue">
                 <span>
-                  <strong>Documents</strong>
-                  <small>Manage employee documents</small>
+                  <FileText size={18} />
                 </span>
-                <b>→</b>
+                <strong>Manage documents</strong>
+                <ArrowUpRight size={17} />
               </Link>
             </div>
           </section>
 
           <footer className="admin-footer">
-            <span>OMNIX Admin Workspace</span>
+            <span>OMNIX · Employee Management System</span>
             <span>© 2026 OMNIX</span>
           </footer>
         </div>

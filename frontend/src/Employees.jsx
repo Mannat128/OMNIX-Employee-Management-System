@@ -1,11 +1,81 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  Users,
+  UserCheck,
+  UserX,
+  ClipboardCheck,
+  Plus,
+  Search,
+  RefreshCw,
+  Eye,
+  Pencil,
+  Power,
+  BriefcaseBusiness,
+  Mail,
+  Building2,
+  FileText,
+} from "lucide-react";
+
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import "./Employees.css";
 
 const API_URL = "http://127.0.0.1:8000";
+
+// Build employee profile photo URL
+function getPhotoUrl(photo) {
+  if (!photo || typeof photo !== "string") return "";
+
+  if (/^https?:\/\//i.test(photo)) {
+    return photo;
+  }
+
+  return `${API_URL}/${photo.replace(/^\/+/, "")}`;
+}
+
+// Generate initials when profile photo is unavailable
+function getInitials(name = "") {
+  return (
+    String(name)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U"
+  );
+}
+
+// Employee photo with automatic initials fallback
+function EmployeeAvatar({ name, photo }) {
+  const [imageBroken, setImageBroken] = useState(false);
+
+  useEffect(() => {
+    setImageBroken(false);
+  }, [photo]);
+
+  const photoUrl = getPhotoUrl(photo);
+
+  if (!photoUrl || imageBroken) {
+    return (
+      <div className="employee-table-avatar" aria-label={name || "Employee"}>
+        {getInitials(name)}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      className="employee-photo"
+      src={photoUrl}
+      alt={`${name || "Employee"} profile`}
+      onError={() => setImageBroken(true)}
+    />
+  );
+}
 
 function Employees() {
   const navigate = useNavigate();
@@ -27,6 +97,7 @@ function Employees() {
     navigate("/login", { replace: true });
   }, [navigate]);
 
+  // Fetch all employee records
   const fetchEmployees = useCallback(async () => {
     if (!token) {
       handleUnauthorized();
@@ -53,7 +124,9 @@ function Employees() {
 
       if (!response.ok) {
         throw new Error(
-          data.detail || "Unable to load employee records."
+          typeof data.detail === "string"
+            ? data.detail
+            : "Unable to load employee records."
         );
       }
 
@@ -69,6 +142,7 @@ function Employees() {
     }
   }, [token, handleUnauthorized]);
 
+  // Fetch pending registration approvals
   const fetchPendingCount = useCallback(async () => {
     if (!token) return;
 
@@ -98,6 +172,7 @@ function Employees() {
     fetchPendingCount();
   }, [fetchEmployees, fetchPendingCount]);
 
+  // Employee summary calculations
   const activeCount = employees.filter(
     (employee) => employee.employment_status === "Active"
   ).length;
@@ -106,6 +181,13 @@ function Employees() {
     (employee) => employee.employment_status === "Inactive"
   ).length;
 
+  const departmentsCount = new Set(
+    employees
+      .map((employee) => employee.department)
+      .filter(Boolean)
+  ).size;
+
+  // Search and status filtering
   const filteredEmployees = useMemo(() => {
     const query = search.toLowerCase().trim();
 
@@ -128,6 +210,7 @@ function Employees() {
     });
   }, [employees, search, statusFilter]);
 
+  // Activate or deactivate an employee
   const handleStatusChange = async (employee) => {
     const employeeId = employee.id;
     const isActive = employee.employment_status === "Active";
@@ -170,7 +253,9 @@ function Employees() {
 
       if (!response.ok) {
         throw new Error(
-          result.detail || `Unable to ${action} employee.`
+          typeof result.detail === "string"
+            ? result.detail
+            : `Unable to ${action} employee.`
         );
       }
 
@@ -192,15 +277,36 @@ function Employees() {
     }
   };
 
-  const getPhotoUrl = (photo) => {
-    if (!photo) return null;
-
-    if (photo.startsWith("http://") || photo.startsWith("https://")) {
-      return photo;
-    }
-
-    return `${API_URL}${photo.startsWith("/") ? "" : "/"}${photo}`;
-  };
+  const summaryCards = [
+    {
+      title: "Total Employees",
+      value: employees.length,
+      subtitle: "All employee records",
+      icon: Users,
+      className: "total",
+    },
+    {
+      title: "Active Employees",
+      value: activeCount,
+      subtitle: "Currently active",
+      icon: UserCheck,
+      className: "active",
+    },
+    {
+      title: "Inactive Employees",
+      value: inactiveCount,
+      subtitle: "Currently inactive",
+      icon: UserX,
+      className: "inactive",
+    },
+    {
+      title: "Pending Approvals",
+      value: pendingCount === null ? "—" : pendingCount,
+      subtitle: "Awaiting admin approval",
+      icon: ClipboardCheck,
+      className: "pending",
+    },
+  ];
 
   return (
     <div className="employees-page">
@@ -210,73 +316,75 @@ function Employees() {
         <Header />
 
         <div className="employees-content">
+          {/* Page heading */}
           <section className="employees-page-heading">
             <div>
-              <h2>Manage Your Team</h2>
+              <span className="employees-eyebrow">
+                WORKFORCE MANAGEMENT
+              </span>
+
+              <h2>Employees</h2>
+
               <p>
-                View, organize and manage all employee records in one place.
+                Manage your team, employee records and work information.
               </p>
             </div>
 
             <Link to="/employees/add" className="add-employee-btn">
-              <span>+</span> Add Employee
+              <Plus size={18} />
+              <span>Add Employee</span>
             </Link>
           </section>
 
+          {/* Error and success messages */}
           {error && (
-            <p className="employees-error" role="alert">
+            <div className="employees-alert employees-error" role="alert">
               {error}
-            </p>
+            </div>
           )}
 
           {notice && (
-            <p className="employees-notice" role="status">
+            <div className="employees-alert employees-notice" role="status">
               {notice}
-            </p>
+            </div>
           )}
 
+          {/* Summary cards */}
           <section className="employees-summary">
-            <article className="employee-summary-card">
-              <div className="employee-summary-top">
-                <span>Total Employees</span>
-                <div className="summary-icon purple">♙</div>
-              </div>
-              <h2>{loading ? "..." : employees.length}</h2>
-              <small>All employee records</small>
-            </article>
+            {summaryCards.map((card) => {
+              const Icon = card.icon;
 
-            <article className="employee-summary-card">
-              <div className="employee-summary-top">
-                <span>Active Employees</span>
-                <div className="summary-icon green">✓</div>
-              </div>
-              <h2>{loading ? "..." : activeCount}</h2>
-              <small>Currently active</small>
-            </article>
+              return (
+                <article
+                  className="employee-summary-card"
+                  key={card.title}
+                >
+                  <div className="employee-summary-top">
+                    <span>{card.title}</span>
 
-            <article className="employee-summary-card">
-              <div className="employee-summary-top">
-                <span>Inactive Employees</span>
-                <div className="summary-icon orange">◷</div>
-              </div>
-              <h2>{loading ? "..." : inactiveCount}</h2>
-              <small>Currently inactive</small>
-            </article>
+                    <div className={`summary-icon ${card.className}`}>
+                      <Icon size={20} strokeWidth={1.8} />
+                    </div>
+                  </div>
 
-            <article className="employee-summary-card">
-              <div className="employee-summary-top">
-                <span>Pending Approvals</span>
-                <div className="summary-icon blue">♧</div>
-              </div>
-              <h2>{pendingCount === null ? "—" : pendingCount}</h2>
-              <small>Awaiting admin approval</small>
-            </article>
+                  <h2>{loading ? "..." : card.value}</h2>
+
+                  <small>{card.subtitle}</small>
+                </article>
+              );
+            })}
           </section>
 
+          {/* Employee records */}
           <section className="employees-table-section">
             <div className="employees-table-heading">
               <div>
+                <span className="employees-section-label">
+                  TEAM DIRECTORY
+                </span>
+
                 <h2>All Employees</h2>
+
                 <p>
                   {loading
                     ? "Loading employee records..."
@@ -285,13 +393,17 @@ function Employees() {
               </div>
 
               <div className="employees-controls">
-                <input
-                  type="search"
-                  placeholder="Search name, ID, email..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Search employees"
-                />
+                <div className="employee-search-box">
+                  <Search size={17} />
+
+                  <input
+                    type="search"
+                    placeholder="Search employees..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    aria-label="Search employees"
+                  />
+                </div>
 
                 <select
                   value={statusFilter}
@@ -322,15 +434,22 @@ function Employees() {
                   {loading ? (
                     <tr>
                       <td colSpan="6" className="employees-empty-cell">
-                        Loading employee records...
+                        <div className="employees-loading">
+                          <span className="employees-loader" />
+                          Loading employee records...
+                        </div>
                       </td>
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
                       <td colSpan="6" className="employees-empty-cell">
                         <div className="employees-empty">
-                          <span>♙</span>
+                          <div className="employees-empty-icon">
+                            <BriefcaseBusiness size={27} />
+                          </div>
+
                           <h3>No employees found</h3>
+
                           <p>
                             {search || statusFilter !== "All"
                               ? "Try changing your search or status filter."
@@ -349,35 +468,44 @@ function Employees() {
                         <tr key={employeeId}>
                           <td>
                             <div className="employee-name-cell">
-                              {employee.profile_photo ? (
-                                <img
-                                  className="employee-photo"
-                                  src={getPhotoUrl(employee.profile_photo)}
-                                  alt=""
-                                />
-                              ) : (
-                                <div className="employee-table-avatar">
-                                  {employee.name?.charAt(0)?.toUpperCase() || "U"}
-                                </div>
-                              )}
+                              <EmployeeAvatar
+                                name={employee.name}
+                                photo={employee.profile_photo}
+                              />
 
-                              <div>
+                              <div className="employee-name-info">
                                 <strong>{employee.name || "—"}</strong>
-                                <small>{employee.email || "—"}</small>
+
+                                <small>
+                                  <Mail size={12} />
+                                  {employee.email || "—"}
+                                </small>
                               </div>
                             </div>
                           </td>
 
-                          <td>{employee.employee_id || "—"}</td>
-                          <td>{employee.department || "—"}</td>
+                          <td className="employee-id-cell">
+                            {employee.employee_id || "—"}
+                          </td>
+
+                          <td>
+                            <span className="employee-detail-cell">
+                              <Building2 size={14} />
+                              {employee.department || "—"}
+                            </span>
+                          </td>
+
                           <td>{employee.designation || "—"}</td>
 
                           <td>
                             <span
                               className={`employee-status ${
-                                isActive ? "status-active" : "status-inactive"
+                                isActive
+                                  ? "status-active"
+                                  : "status-inactive"
                               }`}
                             >
+                              <span className="status-dot" />
                               {employee.employment_status || "Unknown"}
                             </span>
                           </td>
@@ -386,39 +514,64 @@ function Employees() {
                             <div className="employee-actions">
                               <button
                                 type="button"
+                                className="view-action"
+                                title="View employee"
                                 onClick={() =>
                                   navigate(`/employees/${employeeId}`)
                                 }
                                 disabled={!employeeId}
                               >
-                                View
+                                <Eye size={16} />
                               </button>
 
                               <button
                                 type="button"
+                                className="edit-action"
+                                title="Edit employee"
                                 onClick={() =>
                                   navigate(`/employees/edit/${employeeId}`)
                                 }
                                 disabled={!employeeId}
                               >
-                                Edit
+                                <Pencil size={16} />
+                              </button>
+
+                              <button
+                                type="button"
+                                className="documents-action"
+                                title="View employee documents and OCR"
+                                onClick={() =>
+                                  navigate(
+                                    `/employees/${employeeId}/documents`
+                                  )
+                                }
+                                disabled={!employeeId}
+                              >
+                                <FileText size={16} />
                               </button>
 
                               <button
                                 type="button"
                                 className={
-                                  isActive ? "deactivate-btn" : "activate-btn"
+                                  isActive
+                                    ? "deactivate-action"
+                                    : "activate-action"
                                 }
+                                title={isActive ? "Deactivate" : "Activate"}
                                 onClick={() => handleStatusChange(employee)}
                                 disabled={
-                                  !employeeId || actionLoading === employeeId
+                                  !employeeId ||
+                                  actionLoading === employeeId
                                 }
                               >
-                                {actionLoading === employeeId
-                                  ? "Updating..."
-                                  : isActive
-                                    ? "Deactivate"
-                                    : "Activate"}
+                                {actionLoading === employeeId ? (
+                                  <RefreshCw
+                                    size={16}
+                                    className="spin-icon"
+                                  />
+                                ) : (
+                                  <Power size={16} />
+                                )}
                               </button>
                             </div>
                           </td>
@@ -430,6 +583,7 @@ function Employees() {
               </table>
             </div>
 
+            {/* Table footer */}
             <div className="employees-table-footer">
               <span>
                 Showing {filteredEmployees.length} of {employees.length} employees
@@ -438,15 +592,22 @@ function Employees() {
               <button
                 type="button"
                 onClick={() => {
+                  setNotice("");
                   fetchEmployees();
                   fetchPendingCount();
                 }}
                 disabled={loading}
               >
-                ↻ Refresh
+                <RefreshCw size={14} />
+                Refresh
               </button>
             </div>
           </section>
+
+          <div className="employees-page-footer">
+            <span>OMNIX EMS</span>
+            <span>Employee Management</span>
+          </div>
         </div>
       </main>
     </div>

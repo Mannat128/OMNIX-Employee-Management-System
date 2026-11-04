@@ -1,159 +1,371 @@
 
+/* =========================================
+   OMNIX SIDEBAR - MAIN CONTAINER
+   ========================================= */
+
 .omnix-sidebar {
   width: 250px;
   min-width: 250px;
+  flex: 0 0 250px;
   min-height: 100vh;
-  padding: 26px 16px 20px;
+  padding: 26px 18px 18px;
   background: #ffffff;
-  border-right: 1px solid #e7eaf1;
+  border-right: 1px solid #e3ecea;
+
   display: flex;
   flex-direction: column;
+
+  position: relative;
+  z-index: 20;
+
+  transition: all 0.3s ease;
 }
+
+/* =========================================
+   BRAND / LOGO
+   ========================================= */
 
 .omnix-brand {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 0 10px;
-  margin-bottom: 38px;
-  color: #10264b;
-  font-size: 23px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+
+  padding: 0 8px;
+  margin-bottom: 32px;
+
+  text-decoration: none;
+  color: #173d3a;
 }
 
-.omnix-brand-icon {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 11px;
-  background: #693cf4;
-  color: #ffffff;
-  font-size: 21px;
-}
+.omnix-brand-symbol {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
 
-.omnix-user-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 11px;
-  margin-bottom: 30px;
+  justify-content: center;
+
+  position: relative;
+
+  background: #eaf3f2;
+  color: #173d3a;
   border-radius: 12px;
-  background: #f7f8fc;
 }
 
-.omnix-avatar {
-  width: 39px;
-  height: 39px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
+.omnix-brand-dot {
+  width: 9px;
+  height: 9px;
+
+  position: absolute;
+  right: 2px;
+  top: 2px;
+
   border-radius: 50%;
-  background: #eee9ff;
-  color: #693cf4;
-  font-size: 16px;
-  font-weight: 700;
+  background: #f45b0b;
+  border: 2px solid #ffffff;
 }
 
-.omnix-user-info {
+.omnix-brand-text {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
+.omnix-brand-text strong {
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 1px;
+  color: #173d3a;
+}
+
+.omnix-brand-text strong span {
+  color: #f45b0b;
+}
+
+.omnix-brand-text small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #829491;
+  white-space: nowrap;
+}
+
+/* =========================================
+   USER PROFILE CARD
+   ========================================= */
+
+.omnix-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 13px 11px;
+  margin-bottom: 30px;
+
+  background: #f4f8f7;
+  border: 1px solid #e9f0ef;
+  border-radius: 12px;
+}
+
+.omnix-avatar {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  background: #173d3a;
+  color: #ffffff;
+
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.omnix-user-info {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .omnix-user-info strong {
-  color: #10264b;
+  color: #173d3a;
   font-size: 13px;
+  font-weight: 700;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .omnix-user-info span {
-  color: #8994a6;
+  color: #899a97;
   font-size: 11px;
 }
 
+/* =========================================
+   WORKSPACE LABEL
+   ========================================= */
+
 .omnix-sidebar-label {
   padding: 0 12px;
-  margin: 7px 0 15px;
-  color: #9ba5b5;
+  margin-bottom: 12px;
+
+  color: #9aadaa;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.2px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
 }
+
+/* =========================================
+   NAVIGATION
+   ========================================= */
 
 .omnix-navigation {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 7px;
+
+  width: 100%;
+  flex: 1;
 }
 
 .omnix-nav-link {
+  width: 100%;
+  min-height: 45px;
+
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 13px 12px;
-  border-radius: 9px;
-  color: #53647d;
+  gap: 13px;
+
+  padding: 11px 13px;
+
+  border-radius: 10px;
+
+  color: #718582;
   font-size: 13px;
   font-weight: 500;
+
   text-decoration: none;
-  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+
+  transition: all 0.25s ease;
+}
+
+.omnix-nav-link svg {
+  width: 19px;
+  height: 19px;
+  min-width: 19px;
+
+  flex-shrink: 0;
+}
+
+.omnix-nav-link span {
+  display: inline-block;
 }
 
 .omnix-nav-link:hover {
-  background: #f7f4ff;
-  color: #693cf4;
+  background: #eef6f5;
+  color: #173d3a;
+  transform: translateX(3px);
 }
 
 .omnix-nav-link.active {
-  background: #f0ebff;
-  color: #693cf4;
-  font-weight: 600;
+  background: #e5f0ef;
+  color: #173d3a;
+  font-weight: 700;
+
+  box-shadow: inset 3px 0 0 #f45b0b;
 }
 
-.omnix-nav-icon {
-  width: 18px;
-  text-align: center;
-  font-size: 15px;
+.omnix-nav-link.active svg {
+  color: #f45b0b;
 }
 
-.omnix-logout {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* =========================================
+   SIDEBAR FOOTER
+   ========================================= */
+
+.omnix-sidebar-footer {
   width: 100%;
   margin-top: auto;
-  padding: 13px 12px;
+  padding-top: 20px;
+}
+
+/* =========================================
+   HELP CARD
+   ========================================= */
+
+.omnix-help-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+
+  padding: 15px;
+
+  background: #eef6f5;
+  border: 1px solid #e3ecea;
+  border-radius: 12px;
+
+  margin-bottom: 14px;
+}
+
+.omnix-help-icon {
+  width: 34px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #ffffff;
+  color: #173d3a;
+  border-radius: 9px;
+
+  margin-bottom: 3px;
+}
+
+.omnix-help-card strong {
+  font-size: 13px;
+  font-weight: 800;
+  color: #173d3a;
+}
+
+.omnix-help-card span {
+  font-size: 11px;
+  color: #718582;
+  line-height: 1.5;
+}
+
+/* =========================================
+   LOGOUT
+   ========================================= */
+
+.omnix-logout {
+  width: 100%;
+  min-height: 43px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 11px 13px;
+
   border: none;
   border-radius: 9px;
+
   background: transparent;
-  color: #d64545;
+  color: #718582;
+
   font-size: 13px;
+  font-weight: 600;
   text-align: left;
+
   cursor: pointer;
+
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.omnix-logout svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .omnix-logout:hover {
-  background: #fff0f0;
+  background: #fff0eb;
+  color: #f45b0b;
 }
 
-/* Mobile */
+/* =========================================
+   VERSION
+   ========================================= */
+
+.omnix-sidebar-version {
+  padding: 12px 5px 0;
+
+  color: #9aadaa;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* =========================================
+   TABLET RESPONSIVE
+   ========================================= */
+
 @media (max-width: 768px) {
   .omnix-sidebar {
     width: 100%;
-    min-width: 0;
+    min-width: 100%;
+    flex: 0 0 auto;
+
     min-height: auto;
-    padding: 15px;
+    height: auto;
+
+    padding: 14px 16px;
+
     border-right: none;
-    border-bottom: 1px solid #e7eaf1;
+    border-bottom: 1px solid #e3ecea;
   }
 
   .omnix-brand {
     margin-bottom: 15px;
   }
 
-  .omnix-user-card,
+  .omnix-user-card {
+    display: none;
+  }
+
   .omnix-sidebar-label {
     display: none;
   }
@@ -161,14 +373,53 @@
   .omnix-navigation {
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 6px;
   }
 
   .omnix-nav-link {
-    padding: 9px;
+    width: auto;
+    min-height: 40px;
+    padding: 9px 11px;
     font-size: 12px;
+    gap: 7px;
   }
 
-  .omnix-logout {
-    margin-top: 10px;
+  .omnix-sidebar-footer {
+    display: none;
+  }
+}
+
+/* =========================================
+   SMALL MOBILE
+   ========================================= */
+
+@media (max-width: 480px) {
+  .omnix-sidebar {
+    padding: 12px;
+  }
+
+  .omnix-brand-text strong {
+    font-size: 19px;
+  }
+
+  .omnix-brand-text small {
+    font-size: 8px;
+  }
+
+  .omnix-navigation {
+    gap: 5px;
+  }
+
+  .omnix-nav-link {
+    min-height: 36px;
+    padding: 8px;
+    font-size: 11px;
+    gap: 6px;
+  }
+
+  .omnix-nav-link svg {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
   }
 }

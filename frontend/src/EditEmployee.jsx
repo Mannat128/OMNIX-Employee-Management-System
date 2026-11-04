@@ -1,6 +1,17 @@
 
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  Pencil,
+  RefreshCw,
+  UserRound,
+} from "lucide-react";
+
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
 import "./EditEmployee.css";
 
 const API_URL = "http://127.0.0.1:8000";
@@ -18,20 +29,16 @@ function EditEmployee() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [success, setSuccess] = useState(false);
 
   const token = localStorage.getItem("access_token");
 
-  useEffect(() => {
+  const fetchEmployee = useCallback(async () => {
     if (!token) {
-      navigate("/login");
+      navigate("/login", { replace: true });
       return;
     }
 
-    fetchEmployee();
-  }, [id]);
-
-  const fetchEmployee = async () => {
     try {
       setLoading(true);
       setError("");
@@ -43,14 +50,19 @@ function EditEmployee() {
       });
 
       if (response.status === 401 || response.status === 403) {
-        throw new Error("Admin access required. Please login again.");
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+        navigate("/login", { replace: true });
+        return;
       }
+
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error("Unable to load employee details.");
+        throw new Error(
+          data.detail || "Unable to load employee details."
+        );
       }
-
-      const data = await response.json();
 
       setFormData({
         name: data.name || "",
@@ -62,7 +74,11 @@ function EditEmployee() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, token, navigate]);
+
+  useEffect(() => {
+    fetchEmployee();
+  }, [fetchEmployee]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -76,10 +92,15 @@ function EditEmployee() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     try {
       setSaving(true);
       setError("");
-      setSuccess("");
+      setSuccess(false);
 
       const response = await fetch(`${API_URL}/employees/${id}`, {
         method: "PUT",
@@ -97,22 +118,27 @@ function EditEmployee() {
       const result = await response.json().catch(() => ({}));
 
       if (response.status === 401 || response.status === 403) {
-        throw new Error(
-          result.detail || "Admin access required. Please login again."
-        );
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+        navigate("/login", { replace: true });
+        return;
       }
 
       if (!response.ok) {
+        const detail = Array.isArray(result.detail)
+          ? result.detail.map((item) => item.msg).join(", ")
+          : result.detail;
+
         throw new Error(
-          result.detail || "Unable to update employee details."
+          detail || "Unable to update employee details."
         );
       }
 
-      setSuccess("Employee details updated successfully.");
+      setSuccess(true);
 
       setTimeout(() => {
         navigate("/employees");
-      }, 1000);
+      }, 1200);
     } catch (err) {
       setError(err.message || "Update operation failed.");
     } finally {
@@ -120,128 +146,135 @@ function EditEmployee() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    navigate("/login");
-  };
-
   return (
     <div className="edit-employee-page">
-      <aside className="edit-employee-sidebar">
-        <div className="edit-employee-brand">
-          <span className="edit-employee-logo">O</span>
-          <span>OMNIX</span>
-        </div>
-
-        <p className="edit-menu-title">MAIN MENU</p>
-
-        <nav className="edit-employee-nav">
-          <a href="/admin/dashboard">▦ Dashboard</a>
-          <a href="/employees" className="active">♙ Employees</a>
-          <a href="/admin/approvals">◷ Approvals</a>
-          <a href="/documents">▤ Documents</a>
-          <a href="/admin/settings">⚙ Settings</a>
-        </nav>
-
-        <button
-          type="button"
-          className="edit-employee-logout"
-          onClick={handleLogout}
-        >
-          ↪ Logout
-        </button>
-      </aside>
+      <Sidebar role="admin" />
 
       <main className="edit-employee-main">
-        <header className="edit-employee-header">
-          <div>
-            <h1>Edit Employee</h1>
-            <p>Update employee information.</p>
-          </div>
+        <Header />
 
-          <a href="/employees" className="edit-back-btn">
-            ← Back to Employees
-          </a>
-        </header>
+        <div className="edit-employee-content">
+          <section className="edit-employee-header">
+            <div>
+              <span className="edit-employee-eyebrow">
+                WORKFORCE MANAGEMENT
+              </span>
 
-        <section className="edit-employee-card">
-          <div className="edit-card-heading">
-            <h2>Employee Information</h2>
-            <p>Update the required employee details below.</p>
-          </div>
+              <h1>Edit Employee</h1>
+              <p>Update and maintain employee information.</p>
+            </div>
 
-          {loading ? (
-            <p>Loading employee details...</p>
-          ) : (
-            <form className="edit-employee-form" onSubmit={handleSubmit}>
-              <div className="edit-form-group">
-                <label htmlFor="editName">Full Name</label>
-                <input
-                  id="editName"
-                  name="name"
-                  type="text"
-                  placeholder="Enter employee name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
+            <Link to="/employees" className="edit-back-btn">
+              <ArrowLeft size={16} />
+              Back to Employees
+            </Link>
+          </section>
 
-              <div className="edit-form-group">
-                <label htmlFor="editEmail">Email Address</label>
-                <input
-                  id="editEmail"
-                  name="email"
-                  type="email"
-                  placeholder="Enter employee email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div className="edit-form-group">
-                <label htmlFor="editDepartment">Department</label>
-                <input
-                  id="editDepartment"
-                  name="department"
-                  type="text"
-                  placeholder="Enter department"
-                  value={formData.department}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              {error && (
-                <p className="employees-error" role="alert">
-                  {error}
-                </p>
-              )}
-
-              {success && (
-                <p className="add-employee-success" role="status">
-                  {success}
-                </p>
-              )}
-
-              <div className="edit-form-actions">
-                <a href="/employees" className="edit-cancel-btn">
-                  Cancel
-                </a>
-
-                <button
-                  type="submit"
-                  className="update-employee-btn"
-                  disabled={saving}
-                >
-                  {saving ? "Updating..." : "Update Employee →"}
-                </button>
-              </div>
-            </form>
+          {error && (
+            <div className="edit-alert edit-error" role="alert">
+              {error}
+            </div>
           )}
-        </section>
+
+          {success && (
+            <div className="edit-alert edit-success" role="status">
+              <CheckCircle2 size={17} />
+              Employee details updated successfully. Redirecting...
+            </div>
+          )}
+
+          <section className="edit-employee-card">
+            <div className="edit-card-heading">
+              <div className="edit-card-icon">
+                <Pencil size={20} />
+              </div>
+
+              <div>
+                <h2>Employee Information</h2>
+                <p>
+                  Make changes to the employee's basic details below.
+                </p>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="edit-loading">
+                <RefreshCw size={19} className="edit-spin" />
+                Loading employee details...
+              </div>
+            ) : (
+              <form className="edit-employee-form" onSubmit={handleSubmit}>
+                <div className="edit-section-heading">
+                  <h3>Basic Information</h3>
+                  <p>Update the employee's registered information.</p>
+                </div>
+
+                <div className="edit-form-group">
+                  <label htmlFor="editName">Full Name *</label>
+                  <input
+                    id="editName"
+                    name="name"
+                    type="text"
+                    placeholder="Enter employee name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    minLength={2}
+                    maxLength={100}
+                    required
+                  />
+                </div>
+
+                <div className="edit-form-group">
+                  <label htmlFor="editEmail">Email Address *</label>
+                  <input
+                    id="editEmail"
+                    name="email"
+                    type="email"
+                    placeholder="Enter employee email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="edit-form-group">
+                  <label htmlFor="editDepartment">Department *</label>
+                  <input
+                    id="editDepartment"
+                    name="department"
+                    type="text"
+                    placeholder="Enter department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="edit-form-info">
+                  <UserRound size={18} />
+                  <span>
+                    Only the three fields above are editable on this page.
+                  </span>
+                </div>
+
+                <div className="edit-form-actions">
+                  <Link to="/employees" className="edit-cancel-btn">
+                    Cancel
+                  </Link>
+
+                  <button
+                    type="submit"
+                    className="update-employee-btn"
+                    disabled={saving || success}
+                  >
+                    {saving ? "Updating..." : "Save Changes"}
+                    {!saving && <ArrowRight size={16} />}
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+        </div>
       </main>
     </div>
   );

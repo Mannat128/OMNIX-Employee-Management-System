@@ -1,6 +1,20 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  UserRound,
+  Mail,
+  Building2,
+  BadgeCheck,
+  Pencil,
+  RefreshCw,
+  AlertCircle,
+  LoaderCircle,
+} from "lucide-react";
+
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
 import "./EmployeeDetails.css";
 
 const API_URL = "http://127.0.0.1:8000";
@@ -13,18 +27,14 @@ function EmployeeDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const token = localStorage.getItem("access_token");
+  const fetchEmployeeDetails = useCallback(async () => {
+    const token = localStorage.getItem("access_token");
 
-  useEffect(() => {
     if (!token) {
       navigate("/login");
       return;
     }
 
-    fetchEmployeeDetails();
-  }, [id]);
-
-  const fetchEmployeeDetails = async () => {
     try {
       setLoading(true);
       setError("");
@@ -38,13 +48,16 @@ function EmployeeDetails() {
       const data = await response.json().catch(() => ({}));
 
       if (response.status === 401 || response.status === 403) {
-        throw new Error(
-          data.detail || "Admin access required. Please login again."
-        );
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+        navigate("/login");
+        return;
       }
 
       if (!response.ok) {
-        throw new Error(data.detail || "Unable to load employee details.");
+        throw new Error(
+          data.detail || "Unable to load employee details."
+        );
       }
 
       setEmployee(data);
@@ -53,114 +66,162 @@ function EmployeeDetails() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    navigate("/login");
-  };
+  useEffect(() => {
+    fetchEmployeeDetails();
+  }, [fetchEmployeeDetails]);
+
+  const employeeId =
+    employee?.employee_id || employee?.id || employee?._id || "—";
 
   return (
     <div className="employee-details-page">
-      <aside className="details-sidebar">
-        <div className="details-brand">
-          <span className="details-logo">O</span>
-          <span>OMNIX</span>
-        </div>
+      <Sidebar />
 
-        <p className="details-menu-title">MAIN MENU</p>
+      <main className="employee-details-main">
+        <Header />
 
-        <nav className="details-nav">
-          <a href="/admin/dashboard">▦ Dashboard</a>
-          <a href="/employees">♙ Employees</a>
-          <a href="/documents">▤ Documents</a>
-          <a href="/admin/approvals">✓ Approvals</a>
-          <a href="/admin/settings">⚙ Settings</a>
-        </nav>
+        <div className="employee-details-content">
+          <div className="employee-details-heading">
+            <div>
+              <span className="employee-details-eyebrow">
+                EMPLOYEE MANAGEMENT
+              </span>
+              <h1>Employee Details</h1>
+              <p>View employee information and account details.</p>
+            </div>
 
-        <button
-          type="button"
-          className="details-logout"
-          onClick={handleLogout}
-        >
-          ↪ Logout
-        </button>
-      </aside>
-
-      <main className="details-main">
-        <header className="details-header">
-          <div>
-            <h1>Employee Details</h1>
-            <p>View employee information and account details.</p>
+            <button
+              type="button"
+              className="employee-details-back"
+              onClick={() => navigate("/employees")}
+            >
+              <ArrowLeft size={17} />
+              Back to Employees
+            </button>
           </div>
 
-          <a href="/employees" className="details-back">
-            ← Back to Employees
-          </a>
-        </header>
-
-        {loading ? (
-          <section className="details-empty">
-            <h2>Loading employee details...</h2>
-          </section>
-        ) : error ? (
-          <section className="details-empty">
-            <h2>Unable to Load Employee</h2>
-            <p>{error}</p>
-            <button type="button" onClick={fetchEmployeeDetails}>
-              Try Again
-            </button>
-          </section>
-        ) : employee ? (
-          <section className="details-card">
-            <div className="details-card-heading">
-              <div className="details-empty-icon">♙</div>
-              <div>
-                <h2>{employee.name || "—"}</h2>
-                <p>{employee.department || "—"}</p>
+          {loading ? (
+            <section className="employee-details-state">
+              <LoaderCircle className="employee-details-spinner" size={34} />
+              <h2>Loading employee details...</h2>
+              <p>Please wait while we fetch the information.</p>
+            </section>
+          ) : error ? (
+            <section className="employee-details-state">
+              <div className="employee-details-state-icon error">
+                <AlertCircle size={28} />
               </div>
-            </div>
-
-            <div className="details-information">
-              <div>
-                <span>Full Name</span>
-                <p>{employee.name || "—"}</p>
-              </div>
-
-              <div>
-                <span>Email Address</span>
-                <p>{employee.email || "—"}</p>
-              </div>
-
-              <div>
-                <span>Department</span>
-                <p>{employee.department || "—"}</p>
-              </div>
-
-              <div>
-                <span>Employee ID</span>
-                <p>{employee._id || employee.id || "—"}</p>
-              </div>
-            </div>
-
-            <div className="details-actions">
+              <h2>Unable to Load Employee</h2>
+              <p>{error}</p>
               <button
                 type="button"
-                onClick={() => navigate(`/employees/edit/${id}`)}
+                className="employee-details-primary-btn"
+                onClick={fetchEmployeeDetails}
               >
-                Edit Employee
+                <RefreshCw size={16} />
+                Try Again
               </button>
-            </div>
-          </section>
-        ) : (
-          <section className="details-empty">
-            <div className="details-empty-icon">♙</div>
-            <h2>No Employee Found</h2>
-            <p>Employee information is not available.</p>
-            <a href="/employees">Go to Employees</a>
-          </section>
-        )}
+            </section>
+          ) : employee ? (
+            <>
+              <section className="employee-details-profile-card">
+                <div className="employee-details-avatar">
+                  {employee.profile_photo ? (
+                    <img
+                      src={
+                        employee.profile_photo.startsWith("http")
+                          ? employee.profile_photo
+                          : `${API_URL}${employee.profile_photo}`
+                      }
+                      alt={employee.name || "Employee"}
+                    />
+                  ) : (
+                    <UserRound size={36} />
+                  )}
+                </div>
+
+                <div className="employee-details-profile-info">
+                  <span className="employee-details-eyebrow">
+                    EMPLOYEE PROFILE
+                  </span>
+                  <h2>{employee.name || "Unnamed Employee"}</h2>
+                  <p>{employee.designation || employee.department || "Employee"}</p>
+                </div>
+
+                <button
+                  type="button"
+                  className="employee-details-edit-btn"
+                  onClick={() => navigate(`/employees/edit/${id}`)}
+                >
+                  <Pencil size={16} />
+                  Edit Employee
+                </button>
+              </section>
+
+              <section className="employee-details-info-card">
+                <div className="employee-details-section-heading">
+                  <div>
+                    <h2>Personal Information</h2>
+                    <p>Basic information associated with this employee.</p>
+                  </div>
+                  <UserRound size={21} />
+                </div>
+
+                <div className="employee-details-grid">
+                  <div className="employee-details-field">
+                    <span>
+                      <UserRound size={15} />
+                      Full Name
+                    </span>
+                    <p>{employee.name || "—"}</p>
+                  </div>
+
+                  <div className="employee-details-field">
+                    <span>
+                      <Mail size={15} />
+                      Email Address
+                    </span>
+                    <p>{employee.email || "—"}</p>
+                  </div>
+
+                  <div className="employee-details-field">
+                    <span>
+                      <Building2 size={15} />
+                      Department
+                    </span>
+                    <p>{employee.department || "—"}</p>
+                  </div>
+
+                  <div className="employee-details-field">
+                    <span>
+                      <BadgeCheck size={15} />
+                      Employee ID
+                    </span>
+                    <p>{employeeId}</p>
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : (
+            <section className="employee-details-state">
+              <div className="employee-details-state-icon">
+                <UserRound size={28} />
+              </div>
+              <h2>No Employee Found</h2>
+              <p>Employee information is not available.</p>
+              <button
+                type="button"
+                className="employee-details-primary-btn"
+                onClick={() => navigate("/employees")}
+              >
+                <ArrowLeft size={16} />
+                Go to Employees
+              </button>
+            </section>
+          )}
+        </div>
       </main>
     </div>
   );

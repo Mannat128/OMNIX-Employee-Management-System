@@ -47,6 +47,13 @@ ALLOWED_EXTENSIONS = {
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
+ALLOWED_DOCUMENT_TYPES = {
+    "resume",
+    "id",
+    "certificate",
+    "other"
+}
+
 
 # Validate actual file content
 def validate_file_content(extension, file_content):
@@ -72,6 +79,7 @@ def serialize_document(document):
         "employee_name": document.get("employee_name", ""),
         "employee_email": document.get("employee_email", ""),
         "document_type": document["document_type"],
+        "custom_document_name": document.get("custom_document_name"),
         "file_name": document["file_name"],
         "upload_date": document["upload_date"].isoformat(),
         "ocr_status": document.get("ocr_status", "not_started"),
@@ -102,19 +110,36 @@ async def upload_document(
     document_type: str = Form(...),
     file: UploadFile = File(...),
     employee_id: str = Form(None),
+    custom_document_name: str = Form(None),
     current_user: dict = Depends(require_password_changed)
 ):
 
-    if document_type not in [
-        "resume",
-        "id",
-        "certificate",
-        "other"
-    ]:
+    document_type = document_type.strip().lower()
+
+    if document_type not in ALLOWED_DOCUMENT_TYPES:
         raise HTTPException(
             status_code=400,
             detail="Invalid document type"
         )
+
+    # Custom name required for ID Proof and Other
+    if document_type in {"id", "other"}:
+        if not custom_document_name or not custom_document_name.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Please enter the document name"
+            )
+
+        custom_document_name = custom_document_name.strip()
+
+        if len(custom_document_name) > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Document name cannot exceed 100 characters"
+            )
+
+    else:
+        custom_document_name = None
 
     extension = Path(file.filename or "").suffix.lower()
 
@@ -184,13 +209,6 @@ async def upload_document(
 
         file_path = UPLOAD_DIR / stored_filename
 
-        # Set initial OCR status
-        initial_ocr_status = (
-            "pending"
-            if document_type == "resume"
-            else "not_started"
-        )
-
         # Save document
         with open(file_path, "wb") as uploaded_file:
             uploaded_file.write(file_content)
@@ -200,6 +218,7 @@ async def upload_document(
             "employee_name": employee.get("name", ""),
             "employee_email": employee.get("email", ""),
             "document_type": document_type,
+            "custom_document_name": custom_document_name,
             "file_name": os.path.basename(
                 file.filename or "document"
             ),
@@ -207,7 +226,7 @@ async def upload_document(
             "file_path": str(file_path),
             "upload_date": datetime.now(timezone.utc),
             "uploaded_by": str(current_user["_id"]),
-            "ocr_status": initial_ocr_status,
+            "ocr_status": "pending",
             "ocr_error": None
         }
 
@@ -217,21 +236,15 @@ async def upload_document(
             "_id": result.inserted_id
         })
 
-        # Schedule OCR for resumes
-        if document_type == "resume":
-
-            background_tasks.add_task(
-                process_ocr_background,
-                str(result.inserted_id)
-            )
+        # Schedule OCR for every supported document category
+        background_tasks.add_task(
+            process_ocr_background,
+            str(result.inserted_id)
+        )
 
         return {
             "message": "Document uploaded successfully",
-            "ocr_message": (
-                "Resume OCR processing has been scheduled."
-                if document_type == "resume"
-                else "OCR is not enabled for this document type."
-            ),
+            "ocr_message": "OCR processing has been scheduled.",
             "document": serialize_document(saved_document)
         }
 
@@ -342,7 +355,6 @@ def download_document(
 
         upload_directory = UPLOAD_DIR.resolve()
 
-        # Ensure requested file is inside documents folder
         if not file_path.is_relative_to(upload_directory):
 
             raise HTTPException(
@@ -357,7 +369,6 @@ def download_document(
             detail="Invalid document file path"
         )
 
-    # Check whether file exists
     if not file_path.is_file():
 
         raise HTTPException(
@@ -365,7 +376,6 @@ def download_document(
             detail="Document file not found"
         )
 
-    # Return original uploaded document
     return FileResponse(
         path=str(file_path),
         filename=doc["file_name"]
