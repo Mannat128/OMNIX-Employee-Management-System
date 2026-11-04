@@ -1,10 +1,10 @@
-
 fastapi
 uvicorn[standard]
 pymongo
 python-dotenv
 email-validator
 certifi
+python-multipart
 
 # OCR dependencies
 easyocr

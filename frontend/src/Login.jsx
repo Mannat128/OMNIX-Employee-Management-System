@@ -15,7 +15,6 @@ function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-
     setError("");
     setLoading(true);
 
@@ -64,40 +63,30 @@ function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-brand">
-        <div className="login-logo">O</div>
-        <span>OMNIX</span>
-      </div>
 
       <div className="login-container">
+
+        {/* Left Image Panel */}
         <div className="login-info">
-          <span className="login-label">WELCOME TO OMNIX</span>
-
-          <h1>
-            One Platform.
-            <br />
-            <span>Everything Connected.</span>
-          </h1>
-
-          <p>
-            Your workspace for managing people, teams
-            and everything that keeps your organization moving.
-          </p>
-
-          <div className="login-points">
-            <p>✓ Secure employee access</p>
-            <p>✓ Smart workforce management</p>
-            <p>✓ One centralized workspace</p>
-          </div>
+          <img
+            src="/omnix-auth-panel.png"
+            alt="OMNIX Employee Management System"
+          />
         </div>
 
+        {/* Original Login Form */}
         <div className="login-card">
+
           <div className="login-card-heading">
-            <h2>Welcome back!</h2>
-            <p>Sign in to continue to your account.</p>
+            <h2>Welcome Back</h2>
+            <p>
+              Sign in to manage employees, documents
+              and workplace activities.
+            </p>
           </div>
 
           <form className="login-form" onSubmit={handleLogin}>
+
             <label htmlFor="loginEmail">Email Address</label>
 
             <input
@@ -143,19 +132,16 @@ function Login() {
               className="login-submit"
               disabled={loading}
             >
-              {loading ? "Signing in..." : "Sign In →"}
+              {loading ? "Signing in..." : "Login"}
             </button>
+
           </form>
 
           <p className="login-register">
             Don't have an account?{" "}
-            <Link to="/register">Create account</Link>
+            <Link to="/register">Register as Employee</Link>
           </p>
 
-          <div className="login-security">
-            <span>●</span>
-            Your account is protected with secure access.
-          </div>
         </div>
       </div>
     </div>

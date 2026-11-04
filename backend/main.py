@@ -12,9 +12,11 @@ from database.connection import (
     users,
     employees,
     documents,
-    ocr_results
+    ocr_results,
+    tickets
 )
 
+# Existing routers
 from routes.auth import router as auth_router
 from routes.admin import router as admin_router
 from routes.employees import router as employee_router
@@ -22,14 +24,22 @@ from routes.documents import router as documents_router
 from routes.ocr import router as ocr_router
 from routes.profile import router as profile_router
 
+# OMNI Helpdesk router
+from routes.tickets import router as tickets_router
+
 
 # ==========================================
-# PROFILE PHOTO DIRECTORY
+# BASE DIRECTORY
 # ==========================================
 
 BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
+
+
+# ==========================================
+# PROFILE PHOTO DIRECTORY
+# ==========================================
 
 PROFILE_PHOTO_DIR = os.path.join(
     BASE_DIR,
@@ -39,6 +49,22 @@ PROFILE_PHOTO_DIR = os.path.join(
 
 os.makedirs(
     PROFILE_PHOTO_DIR,
+    exist_ok=True
+)
+
+
+# ==========================================
+# TICKET ATTACHMENT DIRECTORY
+# ==========================================
+
+TICKET_UPLOAD_DIR = os.path.join(
+    BASE_DIR,
+    "uploads",
+    "tickets"
+)
+
+os.makedirs(
+    TICKET_UPLOAD_DIR,
     exist_ok=True
 )
 
@@ -100,8 +126,27 @@ async def lifespan(app: FastAPI):
             "employee_id"
         )
 
+        # OMNI Helpdesk indexes
+        tickets.create_index(
+            "ticket_number",
+            unique=True
+        )
+
+        tickets.create_index(
+            "created_by"
+        )
+
+        tickets.create_index(
+            "status"
+        )
+
+        tickets.create_index(
+            "created_at"
+        )
+
         print("MongoDB indexes created successfully!")
         print("Employee Management System API started!")
+        print("OMNI Helpdesk module registered!")
 
         yield
 
@@ -118,12 +163,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Employee Management System API",
+
     description=(
         "Employee Management System with Admin and Employee "
-        "Authentication, Profile Management, Document Management "
-        "and OCR."
+        "Authentication, Profile Management, Document Management, "
+        "OCR and OMNI Helpdesk."
     ),
-    version="1.0.0",
+
+    version="1.1.0",
+
     lifespan=lifespan
 )
 
@@ -134,12 +182,16 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
+
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173"
     ],
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"]
 )
 
@@ -150,9 +202,11 @@ app.add_middleware(
 
 app.mount(
     "/uploads/profile_photos",
+
     StaticFiles(
         directory=PROFILE_PHOTO_DIR
     ),
+
     name="profile_photos"
 )
 
@@ -161,41 +215,59 @@ app.mount(
 # REGISTER API ROUTERS
 # ==========================================
 
+# Authentication
 app.include_router(
     auth_router,
     prefix="/auth",
     tags=["Authentication"]
 )
 
+
+# Admin
 app.include_router(
     admin_router,
     prefix="/admin",
     tags=["Admin"]
 )
 
+
+# Employees
 app.include_router(
     employee_router,
     prefix="/employees",
     tags=["Employees"]
 )
 
+
+# Documents
 app.include_router(
     documents_router,
     prefix="/documents",
     tags=["Documents"]
 )
 
+
+# OCR
 app.include_router(
     ocr_router,
     prefix="/ocr",
     tags=["OCR"]
 )
 
-# NEW PROFILE ROUTES
+
+# Profile Management
 app.include_router(
     profile_router,
     prefix="/profile",
     tags=["Profile Management"]
+)
+
+
+# OMNI Helpdesk
+app.include_router(
+    tickets_router,
+    prefix="/tickets",
+    tags=["OMNI Helpdesk"]
 )
 
 
@@ -208,7 +280,16 @@ def home():
 
     return {
         "message": "Employee Management System API is running!",
-        "status": "success"
+        "status": "success",
+        "modules": [
+            "Authentication",
+            "Admin",
+            "Employees",
+            "Documents",
+            "OCR",
+            "Profile Management",
+            "OMNI Helpdesk"
+        ]
     }
 
 

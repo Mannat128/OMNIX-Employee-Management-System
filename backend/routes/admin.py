@@ -17,7 +17,7 @@ from database.connection import (
 )
 
 from dependencies.auth import require_admin
-from core.security import hash_password, verify_password
+from core.security import verify_password
 
 from models.user import (
     ResetPasswordRequest,
@@ -28,7 +28,10 @@ from models.user import (
 router = APIRouter()
 
 
-# Generate secure temporary password
+# ==========================================
+# GENERATE SECURE TEMPORARY PASSWORD
+# ==========================================
+
 def generate_temporary_password():
     letters = string.ascii_letters
     numbers = string.digits
@@ -52,7 +55,10 @@ def generate_temporary_password():
     return "".join(password_characters)
 
 
+# ==========================================
 # GET ALL PENDING EMPLOYEE REGISTRATIONS
+# ==========================================
+
 @router.get("/pending-users")
 def get_pending_users(
     admin: dict = Depends(require_admin)
@@ -75,7 +81,10 @@ def get_pending_users(
     ]
 
 
+# ==========================================
 # APPROVE EMPLOYEE REGISTRATION
+# ==========================================
+
 @router.patch("/approve/{user_id}")
 def approve_user(
     user_id: str,
@@ -106,7 +115,6 @@ def approve_user(
     try:
         def approval_transaction(session):
 
-            # Recheck pending user inside transaction
             current_user = users.find_one(
                 {
                     "_id": user_object_id,
@@ -121,7 +129,6 @@ def approve_user(
                     "Employee is no longer pending approval."
                 )
 
-            # Find existing employee profile
             existing_employee = employees.find_one(
                 {"email": email},
                 session=session
@@ -131,7 +138,6 @@ def approve_user(
 
                 existing_user_id = existing_employee.get("user_id")
 
-                # Never overwrite another account's profile link
                 if (
                     existing_user_id
                     and existing_user_id != str(user_object_id)
@@ -166,7 +172,6 @@ def approve_user(
                 )
 
             else:
-                # Generate employee ID transactionally
                 counter = counters.find_one_and_update(
                     {"_id": "employee_id"},
                     {"$inc": {"sequence": 1}},
@@ -191,7 +196,6 @@ def approve_user(
                     session=session
                 )
 
-            # Approve login account
             result = users.update_one(
                 {
                     "_id": user_object_id,
@@ -236,9 +240,6 @@ def approve_user(
             detail="Employee email or ID already exists"
         )
 
-    except HTTPException:
-        raise
-
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -246,7 +247,10 @@ def approve_user(
         )
 
 
+# ==========================================
 # REJECT EMPLOYEE REGISTRATION
+# ==========================================
+
 @router.patch("/reject/{user_id}")
 def reject_user(
     user_id: str,
@@ -282,7 +286,10 @@ def reject_user(
     }
 
 
+# ==========================================
 # RESET EMPLOYEE PASSWORD
+# ==========================================
+
 @router.post("/reset-password/{employee_id}")
 def reset_employee_password(
     employee_id: str,
@@ -342,8 +349,11 @@ def reset_employee_password(
         },
         {
             "$set": {
-                "password": hash_password(temporary_password),
-                "mustChangePassword": True,
+                "password": __import__(
+                    "core.security",
+                    fromlist=["hash_password"]
+                ).hash_password(temporary_password),
+                "mustChangePassword": False,
                 "password_reset_at": datetime.now(timezone.utc)
             },
             "$inc": {
@@ -365,13 +375,19 @@ def reset_employee_password(
     }
 
 
-# ADMIN ACCESS TRANSFER
+# ==========================================
+# TRANSFER ADMIN ACCESS
+# Old Admin -> Employee
+# Selected Employee -> Admin
+# ==========================================
+
 @router.post("/transfer-access")
 def transfer_admin_access(
     data: AdminTransferRequest,
     admin: dict = Depends(require_admin)
 ):
-    # Verify current Admin password
+
+    # 1. Verify current Admin password
     if not verify_password(
         data.admin_password,
         admin["password"]
@@ -390,27 +406,13 @@ def transfer_admin_access(
     old_admin_id = admin["_id"]
     target_employee_id = ObjectId(data.target_employee_id)
 
-    if data.old_admin_action not in ["employee", "deactivate"]:
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid old Admin action"
-        )
-
-    if (
-        data.old_admin_action == "employee"
-        and not data.old_admin_details
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Old Admin employee details are required"
-        )
-
     if users.count_documents({"role": "admin"}) != 1:
         raise HTTPException(
             status_code=409,
             detail="System must have exactly one Admin before transfer"
         )
 
+    # 2. Check selected employee
     target_employee = employees.find_one({
         "_id": target_employee_id,
         "employment_status": "Active"
@@ -450,48 +452,76 @@ def transfer_admin_access(
             detail="Selected employee account is not eligible"
         )
 
-    # Prepare old Admin employee profile
-    old_admin_employee_data = None
+    # 3. Verify old Admin does not already have an employee profile
+    if employees.find_one({
+        "user_id": str(old_admin_id)
+    }):
+        raise HTTPException(
+            status_code=409,
+            detail="Old Admin already has an employee profile"
+        )
 
-    if data.old_admin_action == "employee":
+    # 4. Prepare old Admin employee details
+    details = data.old_admin_details.model_dump(mode="json")
 
-        details = data.old_admin_details.model_dump(mode="json")
+    old_admin_employee_data = {
+        "user_id": str(old_admin_id),
+        "name": admin["name"],
+        "email": admin["email"],
+        **details,
+        "employee_id": None,
+        "employment_status": "Active",
+        "profile_photo": admin.get("profile_photo"),
+        "created_at": datetime.now(timezone.utc)
+    }
 
-        existing_profile = employees.find_one({
-            "user_id": str(old_admin_id)
-        })
+    # 5. Prepare shared lock document.
+    # Every transfer writes to the same document inside its transaction.
+    # This prevents concurrent transfers from independently passing
+    # the Admin-count check.
 
-        if existing_profile:
-            raise HTTPException(
-                status_code=409,
-                detail="Old Admin already has an employee profile"
-            )
+    counters.update_one(
+        {"_id": "admin_transfer_lock"},
+        {
+            "$setOnInsert": {
+                "sequence": 0
+            }
+        },
+        upsert=True
+    )
 
-        old_admin_employee_data = {
-            "user_id": str(old_admin_id),
-            "name": admin["name"],
-            "email": admin["email"],
-            **details,
-            "employee_id": None,
-            "employment_status": "Active",
-            "profile_photo": None,
-            "created_at": datetime.now(timezone.utc)
-        }
-
-    # Perform transfer inside MongoDB transaction
+    # 6. MongoDB transaction
     def transfer_transaction(session):
+
+        # Acquire transaction-level write lock
+        counters.find_one_and_update(
+            {"_id": "admin_transfer_lock"},
+            {"$inc": {"sequence": 1}},
+            return_document=ReturnDocument.AFTER,
+            session=session
+        )
+
+        # Recheck current Admin
+        current_admin = users.find_one(
+            {
+                "_id": old_admin_id,
+                "role": "admin",
+                "status": "approved"
+            },
+            session=session
+        )
 
         admin_count = users.count_documents(
             {"role": "admin"},
             session=session
         )
 
-        if admin_count != 1:
+        if not current_admin or admin_count != 1:
             raise RuntimeError(
-                "Admin count changed. Transfer cancelled."
+                "Admin account changed. Transfer cancelled."
             )
 
-        # Recheck target employee profile AND login account
+        # Recheck selected employee profile
         current_employee = employees.find_one(
             {
                 "_id": target_employee_id,
@@ -501,6 +531,7 @@ def transfer_admin_access(
             session=session
         )
 
+        # Recheck selected employee login account
         current_target = users.find_one(
             {
                 "_id": target_user_id,
@@ -515,65 +546,84 @@ def transfer_admin_access(
                 "Selected employee is no longer eligible."
             )
 
-        if data.old_admin_action == "employee":
+        # Ensure old Admin still has no employee profile
+        existing_profile = employees.find_one(
+            {"user_id": str(old_admin_id)},
+            session=session
+        )
 
-            counter = counters.find_one_and_update(
-                {"_id": "employee_id"},
-                {"$inc": {"sequence": 1}},
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
-                session=session
+        if existing_profile:
+            raise RuntimeError(
+                "Old Admin already has an employee profile."
             )
 
-            old_admin_employee_data["employee_id"] = (
-                f"EMP{counter['sequence']:03d}"
-            )
+        # Generate unique Employee ID
+        counter = counters.find_one_and_update(
+            {"_id": "employee_id"},
+            {"$inc": {"sequence": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+            session=session
+        )
 
-            employees.insert_one(
-                old_admin_employee_data,
-                session=session
-            )
+        old_admin_employee_data["employee_id"] = (
+            f"EMP{counter['sequence']:03d}"
+        )
 
-            old_admin_result = users.update_one(
-                {
-                    "_id": old_admin_id,
-                    "role": "admin"
+        # Create employee profile for old Admin
+        employees.insert_one(
+            old_admin_employee_data,
+            session=session
+        )
+
+        # Demote old Admin to Employee.
+        # Password is deliberately NOT modified.
+        old_admin_result = users.update_one(
+            {
+                "_id": old_admin_id,
+                "role": "admin",
+                "status": "approved"
+            },
+            {
+                "$set": {
+                    "role": "employee",
+                    "status": "approved",
+                    "mustChangePassword": False
                 },
-                {
-                    "$set": {
-                        "role": "employee",
-                        "status": "approved",
-                        "mustChangePassword": True
-                    },
-                    "$inc": {
-                        "session_version": 1
-                    }
-                },
-                session=session
-            )
-
-        else:
-            old_admin_result = users.update_one(
-                {
-                    "_id": old_admin_id,
-                    "role": "admin"
-                },
-                {
-                    "$set": {
-                        "role": "employee",
-                        "status": "inactive"
-                    },
-                    "$inc": {
-                        "session_version": 1
-                    }
-                },
-                session=session
-            )
+                "$inc": {
+                    "session_version": 1
+                }
+            },
+            session=session
+        )
 
         if old_admin_result.modified_count != 1:
             raise RuntimeError(
                 "Current Admin account could not be updated."
             )
+
+        # Copy employee profile fields to the new Admin's user document.
+        # profile.py reads Admin profile details from the users collection.
+        profile_fields = [
+            "employee_id",
+            "phone",
+            "date_of_birth",
+            "gender",
+            "city",
+            "state",
+            "department",
+            "designation",
+            "joining_date",
+            "employment_type",
+            "employment_status",
+            "profile_photo"
+        ]
+
+        new_admin_profile = {
+            field: current_employee[field]
+            for field in profile_fields
+            if field in current_employee
+        }
 
         # Promote selected employee to Admin
         new_admin_result = users.update_one(
@@ -584,9 +634,11 @@ def transfer_admin_access(
             },
             {
                 "$set": {
+                    **new_admin_profile,
                     "role": "admin",
                     "status": "approved",
-                    "mustChangePassword": False
+                    "mustChangePassword": False,
+                    "updated_at": datetime.now(timezone.utc)
                 },
                 "$inc": {
                     "session_version": 1
@@ -600,6 +652,7 @@ def transfer_admin_access(
                 "Selected employee could not be promoted."
             )
 
+        # Final validation
         final_admin_count = users.count_documents(
             {"role": "admin"},
             session=session
@@ -610,6 +663,7 @@ def transfer_admin_access(
                 "Admin transfer validation failed."
             )
 
+    # 7. Execute transaction
     try:
         with client.start_session() as session:
             session.with_transaction(transfer_transaction)
@@ -626,21 +680,27 @@ def transfer_admin_access(
             detail="Employee ID or email already exists"
         )
 
-    except HTTPException:
-        raise
-
     except Exception:
         raise HTTPException(
             status_code=500,
             detail="Admin transfer failed. No changes were committed."
         )
 
+    # 8. Fetch updated accounts
+    updated_new_admin = users.find_one({
+        "_id": target_user_id
+    })
+
     return {
         "message": "Admin access transferred successfully",
         "new_admin": {
-            "name": target_user["name"],
-            "email": target_user["email"]
+            "name": updated_new_admin.get("name"),
+            "email": updated_new_admin.get("email")
         },
-        "old_admin_action": data.old_admin_action,
+        "old_admin": {
+            "name": admin.get("name"),
+            "role": "employee",
+            "employee_id": old_admin_employee_data["employee_id"]
+        },
         "admin_count": 1
     }

@@ -423,3 +423,33 @@
     min-width: 16px;
   }
 }
+.omnix-nav-icon {
+  width: 20px;
+  min-width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.omnix-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.omnix-brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 32px;
+  text-decoration: none;
+}
+
+.omnix-sidebar-logo {
+  display: block;
+  width: 210px;
+  height: 65px;
+  object-fit: contain;
+  object-position: left center;
+}

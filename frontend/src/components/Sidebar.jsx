@@ -1,5 +1,10 @@
 
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
 import {
   LayoutDashboard,
   Users,
@@ -8,31 +13,34 @@ import {
   Settings,
   UserRound,
   LogOut,
-  BriefcaseBusiness,
+  ArrowRightLeft,
 } from "lucide-react";
+
 import "./Sidebar.css";
 
 function Sidebar({ role }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Get logged-in user
   let user = {};
 
   try {
-    user = JSON.parse(localStorage.getItem("user") || "{}");
+    user = JSON.parse(
+      localStorage.getItem("user") || "{}"
+    );
   } catch {
     user = {};
   }
 
-  // Automatically identify the logged-in user's role
-  const currentRole = (
-    role ||
-    user.role ||
-    (location.pathname.startsWith("/admin") ? "admin" : "employee")
+  // Identify current role
+  const currentRole = String(
+    user.role || role || "employee"
   ).toLowerCase();
 
   const isAdmin = currentRole === "admin";
 
+  // Admin navigation
   const adminLinks = [
     {
       label: "Dashboard",
@@ -55,12 +63,18 @@ function Sidebar({ role }) {
       icon: FileText,
     },
     {
+      label: "Transfer Admin Access",
+      path: "/admin/transfer",
+      icon: ArrowRightLeft,
+    },
+    {
       label: "Settings",
       path: "/admin/settings",
       icon: Settings,
     },
   ];
 
+  // Employee navigation
   const employeeLinks = [
     {
       label: "Dashboard",
@@ -86,6 +100,7 @@ function Sidebar({ role }) {
 
   const links = isAdmin ? adminLinks : employeeLinks;
 
+  // User information
   const displayName =
     user.name ||
     user.full_name ||
@@ -93,96 +108,110 @@ function Sidebar({ role }) {
 
   const initial = displayName.charAt(0).toUpperCase();
 
+  // Logout
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user");
 
-    navigate("/login", { replace: true });
+    navigate("/login", {
+      replace: true,
+    });
+  };
+
+  // Active navigation link
+  const isLinkActive = (path) => {
+    if (location.pathname === path) {
+      return true;
+    }
+
+    if (path === "/employees") {
+      return location.pathname.startsWith("/employees/");
+    }
+
+    return false;
   };
 
   return (
     <aside className="omnix-sidebar">
-      {/* Brand */}
-      <Link
-        to={isAdmin ? "/admin/dashboard" : "/employee/dashboard"}
-        className="omnix-brand"
-      >
-        <div className="omnix-brand-symbol">
-          <BriefcaseBusiness size={25} strokeWidth={2.2} />
-          <span className="omnix-brand-dot" />
-        </div>
 
-        <div className="omnix-brand-text">
-          <strong>
-            OMNI<span>X</span>
-          </strong>
-          <small>EMPLOYEE MANAGEMENT</small>
-        </div>
+      {/* Final OMNIX EMS Logo */}
+      <Link
+        to={
+          isAdmin
+            ? "/admin/dashboard"
+            : "/employee/dashboard"
+        }
+        className="omnix-brand"
+        aria-label="OMNIX Home"
+      >
+        <img
+          src="/omnix-logo.png"
+          alt="OMNIX Employee Management System"
+          className="omnix-sidebar-logo"
+        />
       </Link>
 
-      {/* User profile */}
+      {/* User Profile Card */}
       <div className="omnix-user-card">
-        <div className="omnix-avatar">{initial}</div>
+
+        <div className="omnix-avatar">
+          {initial}
+        </div>
 
         <div className="omnix-user-info">
           <strong>{displayName}</strong>
+
           <span>
-            {isAdmin ? "Administrator" : "Employee Account"}
+            {isAdmin ? "Admin Account" : "Employee Account"}
           </span>
         </div>
+
       </div>
 
-      {/* Navigation */}
+      {/* Navigation Label */}
       <div className="omnix-sidebar-label">
-        WORKSPACE
+        {isAdmin ? "MAIN MENU" : "MY WORKSPACE"}
       </div>
 
-      <nav className="omnix-navigation" aria-label="Main navigation">
+      {/* Role Based Navigation */}
+      <nav className="omnix-navigation">
+
         {links.map((item) => {
           const Icon = item.icon;
-
-          const isActive =
-            location.pathname === item.path ||
-            (item.path === "/employees" &&
-              location.pathname.startsWith("/employees/"));
+          const active = isLinkActive(item.path);
 
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`omnix-nav-link ${isActive ? "active" : ""}`}
+              className={`omnix-nav-link ${
+                active ? "active" : ""
+              }`}
             >
-              <Icon size={19} strokeWidth={1.9} />
+              <span className="omnix-nav-icon">
+                <Icon
+                  size={19}
+                  strokeWidth={1.8}
+                />
+              </span>
+
               <span>{item.label}</span>
             </Link>
           );
         })}
+
       </nav>
 
-      {/* Sidebar footer */}
-      <div className="omnix-sidebar-footer">
-        <div className="omnix-help-card">
-          <div className="omnix-help-icon">
-            <BriefcaseBusiness size={19} />
-          </div>
+      {/* Logout */}
+      <button
+        type="button"
+        className="omnix-logout"
+        onClick={handleLogout}
+      >
+        <LogOut size={18} />
+        <span>Logout</span>
+      </button>
 
-          <strong>OMNIX EMS</strong>
-          <span>Your workplace, organized.</span>
-        </div>
-
-        <button
-          type="button"
-          className="omnix-logout"
-          onClick={handleLogout}
-        >
-          <LogOut size={18} />
-          <span>Logout</span>
-        </button>
-
-        <p className="omnix-sidebar-version">
-          OMNIX EMS · v1.0
-        </p>
-      </div>
     </aside>
   );
 }

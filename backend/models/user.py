@@ -21,12 +21,15 @@ class BaseRequest(BaseModel):
 class LoginRequest(BaseRequest):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+
+
 # Employee Registration Request
 class RegisterRequest(BaseRequest):
     name: str = Field(min_length=2, max_length=100)
     email: EmailStr
     department: str = Field(min_length=2, max_length=100)
     password: str = Field(min_length=8, max_length=128)
+
 
 # Change Password Request
 class ChangePasswordRequest(BaseRequest):
@@ -72,16 +75,15 @@ class OldAdminEmployeeDetails(BaseRequest):
 
 
 # Admin Transfer Request
+# Only Option A is allowed:
+# Current Admin becomes an Employee.
 class AdminTransferRequest(BaseRequest):
     target_employee_id: str
     admin_password: str = Field(min_length=1, max_length=128)
 
-    old_admin_action: Literal[
-        "employee",
-        "deactivate"
-    ]
+    old_admin_action: Literal["employee"] = "employee"
 
-    old_admin_details: OldAdminEmployeeDetails | None = None
+    old_admin_details: OldAdminEmployeeDetails
 
     @field_validator("target_employee_id")
     @classmethod
@@ -92,23 +94,3 @@ class AdminTransferRequest(BaseRequest):
             raise ValueError("Invalid employee ID")
 
         return value
-
-    @model_validator(mode="after")
-    def validate_old_admin_details(self) -> Self:
-        if (
-            self.old_admin_action == "employee"
-            and self.old_admin_details is None
-        ):
-            raise ValueError(
-                "Old Admin employee details are required"
-            )
-
-        if (
-            self.old_admin_action == "deactivate"
-            and self.old_admin_details is not None
-        ):
-            raise ValueError(
-                "Employee details are not required for deactivation"
-            )
-
-        return self

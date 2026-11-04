@@ -62,38 +62,21 @@ function Register() {
   return (
     <div className="register-page">
 
-      <div className="register-brand">
-        <div className="register-logo">O</div>
-        <span>OMNIX</span>
-      </div>
-
       <div className="register-container">
 
+        {/* Same OMNIX image */}
         <div className="register-info">
-          <span className="register-label">JOIN OMNIX</span>
-
-          <h1>
-            Build better teams.
-            <br />
-            <span>Work smarter.</span>
-          </h1>
-
-          <p>
-            Create your employee account and bring your
-            workplace activities together in one secure platform.
-          </p>
-
-          <div className="register-points">
-            <p>✓ Easy employee registration</p>
-            <p>✓ Centralized employee workspace</p>
-            <p>✓ Secure document management</p>
-          </div>
+          <img
+            src="/omnix-auth-panel.png"
+            alt="OMNIX Employee Management System"
+          />
         </div>
 
+        {/* Original Registration Form */}
         <div className="register-card">
 
           <div className="register-card-heading">
-            <h2>Create an account</h2>
+            <h2>Create an Account</h2>
             <p>Enter your details to get started.</p>
           </div>
 
@@ -175,7 +158,7 @@ function Register() {
               className="register-submit"
               disabled={loading}
             >
-              {loading ? "Creating Account..." : "Create Account →"}
+              {loading ? "Creating Account..." : "Register"}
             </button>
 
           </form>

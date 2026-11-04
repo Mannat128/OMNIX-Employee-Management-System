@@ -53,3 +53,6 @@ def check_database_connection():
     except Exception as error:
         print(f"MongoDB connection failed: {error}")
         return False
+
+    # Helpdesk Collection
+tickets = db["tickets"]
