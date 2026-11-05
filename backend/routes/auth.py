@@ -1,7 +1,13 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+    status
+)
+
 from pymongo.errors import DuplicateKeyError
 
 from database.connection import users, employees
@@ -28,21 +34,25 @@ router = APIRouter()
 # USER REGISTRATION
 # ==========================================
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED
+)
 def register_user(data: RegisterRequest):
 
-    email = str(data.email).lower().strip()
+    email = str(data.email).strip().lower()
 
-    # Check whether email already exists
-    if users.find_one({"email": email}) or employees.find_one(
-        {"email": email}
-    ):
+    existing_user = users.find_one({"email": email})
+    existing_employee = employees.find_one({"email": email})
+
+    if existing_user or existing_employee:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered"
         )
 
-    # Prepare new employee account
+    now = datetime.now(timezone.utc)
+
     user_data = {
         "name": data.name.strip(),
         "email": email,
@@ -52,17 +62,20 @@ def register_user(data: RegisterRequest):
         "status": "pending",
         "mustChangePassword": False,
         "session_version": 0,
-        "created_at": datetime.now(timezone.utc)
+        "created_at": now,
+        "updated_at": now
     }
 
     try:
+
         result = users.insert_one(user_data)
 
-    except DuplicateKeyError:
+    except DuplicateKeyError as error:
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered"
-        )
+        ) from error
 
     return {
         "message": (
@@ -81,14 +94,13 @@ def register_user(data: RegisterRequest):
 @router.post("/login")
 def login(data: LoginRequest):
 
-    email = str(data.email).lower().strip()
+    email = str(data.email).strip().lower()
 
     user = users.find_one({"email": email})
 
-    # Validate credentials
     if not user or not verify_password(
         data.password,
-        user["password"]
+        user.get("password", "")
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -97,21 +109,30 @@ def login(data: LoginRequest):
 
     role = user.get("role")
 
-    # Validate role
-    if role not in ["admin", "employee"]:
+    if role not in {"admin", "employee"}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid account role"
         )
 
-    # Employee account checks
-    if role == "employee":
+    if user.get("status") != "approved":
 
-        if user.get("status") != "approved":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your account is not approved"
-            )
+        if user.get("status") == "pending":
+            message = "Your account is awaiting admin approval."
+
+        elif user.get("status") == "rejected":
+            message = "Your registration has been rejected."
+
+        else:
+            message = "Your account is not active. Contact Admin."
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=message
+        )
+
+    # Employee account validation
+    if role == "employee":
 
         employee = employees.find_one({
             "user_id": str(user["_id"])
@@ -129,7 +150,6 @@ def login(data: LoginRequest):
                 detail="Your account is inactive. Contact Admin."
             )
 
-    # Generate JWT token
     token = create_access_token({
         "sub": str(user["_id"]),
         "email": user["email"],
@@ -163,7 +183,6 @@ def change_password(
     current_user: dict = Depends(get_current_user)
 ):
 
-    # Verify current password
     if not verify_password(
         data.current_password,
         current_user["password"]
@@ -173,16 +192,33 @@ def change_password(
             detail="Current password is incorrect"
         )
 
-    # Update password and invalidate existing sessions
+    if verify_password(
+        data.new_password,
+        current_user["password"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password"
+        )
+
+    current_version = current_user.get("session_version", 0)
+    now = datetime.now(timezone.utc)
+
     result = users.update_one(
         {
             "_id": current_user["_id"],
-            "password": current_user["password"]
+            "password": current_user["password"],
+            "$or": [
+                {"session_version": current_version},
+                {"session_version": {"$exists": False}}
+            ]
         },
         {
             "$set": {
                 "password": hash_password(data.new_password),
-                "mustChangePassword": False
+                "mustChangePassword": False,
+                "password_changed_at": now,
+                "updated_at": now
             },
             "$inc": {
                 "session_version": 1

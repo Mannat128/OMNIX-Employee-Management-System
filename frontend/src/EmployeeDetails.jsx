@@ -1,6 +1,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+
 import {
   ArrowLeft,
   UserRound,
@@ -13,11 +14,33 @@ import {
   LoaderCircle,
 } from "lucide-react";
 
+import API from "./api";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import "./EmployeeDetails.css";
 
-const API_URL = "http://127.0.0.1:8000";
+// Read logged-in user's role
+function getCurrentUserRole() {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    return String(user.role || "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// Build profile photo URL
+const API_URL = API.defaults.baseURL;
+
+function getPhotoUrl(photo) {
+  if (!photo || typeof photo !== "string") return "";
+
+  if (/^https?:\/\//i.test(photo)) {
+    return photo;
+  }
+
+  return `${API_URL}/${photo.replace(/^\/+/, "")}`;
+}
 
 function EmployeeDetails() {
   const navigate = useNavigate();
@@ -27,11 +50,22 @@ function EmployeeDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const currentUserRole = getCurrentUserRole();
+  const isAdmin = currentUserRole === "admin";
+
+  // Handle expired session
+  const handleUnauthorized = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
+  }, [navigate]);
+
+  // Fetch employee details
   const fetchEmployeeDetails = useCallback(async () => {
     const token = localStorage.getItem("access_token");
 
     if (!token) {
-      navigate("/login");
+      handleUnauthorized();
       return;
     }
 
@@ -39,34 +73,39 @@ function EmployeeDetails() {
       setLoading(true);
       setError("");
 
-      const response = await fetch(`${API_URL}/employees/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await API.get(`/employees/${id}`);
 
-      const data = await response.json().catch(() => ({}));
+      setEmployee(response.data);
+    } catch (err) {
+      const status = err.response?.status;
+      const message = err.response?.data?.detail;
 
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        navigate("/login");
+      if (status === 401) {
+        handleUnauthorized();
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Unable to load employee details."
+      if (status === 403) {
+        setError(
+          message || "You do not have permission to view this employee."
         );
+        return;
       }
 
-      setEmployee(data);
-    } catch (err) {
-      setError(err.message || "Something went wrong.");
+      if (status === 404) {
+        setError(message || "Employee not found.");
+        return;
+      }
+
+      setError(
+        err.code === "ERR_NETWORK"
+          ? "Unable to connect to the backend server."
+          : message || "Unable to load employee details."
+      );
     } finally {
       setLoading(false);
     }
-  }, [id, navigate]);
+  }, [id, handleUnauthorized]);
 
   useEffect(() => {
     fetchEmployeeDetails();
@@ -83,13 +122,18 @@ function EmployeeDetails() {
         <Header />
 
         <div className="employee-details-content">
+          {/* Page heading */}
           <div className="employee-details-heading">
             <div>
               <span className="employee-details-eyebrow">
                 EMPLOYEE MANAGEMENT
               </span>
+
               <h1>Employee Details</h1>
-              <p>View employee information and account details.</p>
+
+              <p>
+                View employee information and account details.
+              </p>
             </div>
 
             <button
@@ -102,19 +146,31 @@ function EmployeeDetails() {
             </button>
           </div>
 
+          {/* Loading state */}
           {loading ? (
             <section className="employee-details-state">
-              <LoaderCircle className="employee-details-spinner" size={34} />
+              <LoaderCircle
+                className="employee-details-spinner"
+                size={34}
+              />
+
               <h2>Loading employee details...</h2>
-              <p>Please wait while we fetch the information.</p>
+
+              <p>
+                Please wait while we fetch the information.
+              </p>
             </section>
           ) : error ? (
+            /* Error state */
             <section className="employee-details-state">
               <div className="employee-details-state-icon error">
                 <AlertCircle size={28} />
               </div>
+
               <h2>Unable to Load Employee</h2>
+
               <p>{error}</p>
+
               <button
                 type="button"
                 className="employee-details-primary-btn"
@@ -126,15 +182,12 @@ function EmployeeDetails() {
             </section>
           ) : employee ? (
             <>
+              {/* Employee profile card */}
               <section className="employee-details-profile-card">
                 <div className="employee-details-avatar">
-                  {employee.profile_photo ? (
+                  {getPhotoUrl(employee.profile_photo) ? (
                     <img
-                      src={
-                        employee.profile_photo.startsWith("http")
-                          ? employee.profile_photo
-                          : `${API_URL}${employee.profile_photo}`
-                      }
+                      src={getPhotoUrl(employee.profile_photo)}
                       alt={employee.name || "Employee"}
                     />
                   ) : (
@@ -146,26 +199,44 @@ function EmployeeDetails() {
                   <span className="employee-details-eyebrow">
                     EMPLOYEE PROFILE
                   </span>
-                  <h2>{employee.name || "Unnamed Employee"}</h2>
-                  <p>{employee.designation || employee.department || "Employee"}</p>
+
+                  <h2>
+                    {employee.name || "Unnamed Employee"}
+                  </h2>
+
+                  <p>
+                    {employee.designation ||
+                      employee.department ||
+                      "Employee"}
+                  </p>
                 </div>
 
-                <button
-                  type="button"
-                  className="employee-details-edit-btn"
-                  onClick={() => navigate(`/employees/edit/${id}`)}
-                >
-                  <Pencil size={16} />
-                  Edit Employee
-                </button>
+                {/* Edit action: Admin only */}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="employee-details-edit-btn"
+                    onClick={() =>
+                      navigate(`/employees/edit/${id}`)
+                    }
+                  >
+                    <Pencil size={16} />
+                    Edit Employee
+                  </button>
+                )}
               </section>
 
+              {/* Personal information */}
               <section className="employee-details-info-card">
                 <div className="employee-details-section-heading">
                   <div>
                     <h2>Personal Information</h2>
-                    <p>Basic information associated with this employee.</p>
+
+                    <p>
+                      Basic information associated with this employee.
+                    </p>
                   </div>
+
                   <UserRound size={21} />
                 </div>
 
@@ -175,6 +246,7 @@ function EmployeeDetails() {
                       <UserRound size={15} />
                       Full Name
                     </span>
+
                     <p>{employee.name || "—"}</p>
                   </div>
 
@@ -183,6 +255,7 @@ function EmployeeDetails() {
                       <Mail size={15} />
                       Email Address
                     </span>
+
                     <p>{employee.email || "—"}</p>
                   </div>
 
@@ -191,6 +264,7 @@ function EmployeeDetails() {
                       <Building2 size={15} />
                       Department
                     </span>
+
                     <p>{employee.department || "—"}</p>
                   </div>
 
@@ -199,18 +273,25 @@ function EmployeeDetails() {
                       <BadgeCheck size={15} />
                       Employee ID
                     </span>
+
                     <p>{employeeId}</p>
                   </div>
                 </div>
               </section>
             </>
           ) : (
+            /* Empty state */
             <section className="employee-details-state">
               <div className="employee-details-state-icon">
                 <UserRound size={28} />
               </div>
+
               <h2>No Employee Found</h2>
-              <p>Employee information is not available.</p>
+
+              <p>
+                Employee information is not available.
+              </p>
+
               <button
                 type="button"
                 className="employee-details-primary-btn"

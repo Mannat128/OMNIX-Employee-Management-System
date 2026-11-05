@@ -9,12 +9,15 @@ import {
 import { ThemeProvider } from "./ThemeContext";
 import "./Theme.css";
 
-// Main pages
+// OMNI AI Assistant
+import OmniAssistant from "./components/OmniAssistant";
+
+// Public pages
 import Home from "./Home";
 import Login from "./Login";
 import Register from "./Register";
 
-// Dashboard pages
+// Dashboards
 import AdminDashboard from "./AdminDashboard";
 import EmployeeDashboard from "./EmployeeDashboard";
 
@@ -23,6 +26,7 @@ import Employees from "./Employees";
 import AddEmployee from "./AddEmployee";
 import EditEmployee from "./EditEmployee";
 import EmployeeDetails from "./EmployeeDetails";
+import EmployeeDocuments from "./EmployeeDocuments";
 
 // Other pages
 import Documents from "./Documents";
@@ -30,15 +34,96 @@ import Approvals from "./Approvals";
 import Settings from "./Settings";
 import Profile from "./Profile";
 import ChangePassword from "./ChangePassword";
-
-// Admin transfer
 import AdminTransfer from "./AdminTransfer";
+
+// Helpdesk
+import Tickets from "./Tickets";
+import TicketDetails from "./TicketDetails";
+
+// Read login session
+function getSession() {
+  const token = localStorage.getItem("access_token");
+
+  let user = {};
+
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    user = {};
+  }
+
+  const role = String(user.role || "").toLowerCase();
+
+  return {
+    token,
+    role,
+    isAuthenticated:
+      Boolean(token) && ["admin", "employee"].includes(role),
+  };
+}
+
+// Login required for both roles
+function ProtectedRoute({ children }) {
+  const { isAuthenticated } = getSession();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <>
+      {children}
+      <OmniAssistant />
+    </>
+  );
+}
+
+// Admin-only routes
+function AdminRoute({ children }) {
+  const { isAuthenticated, role } = getSession();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (role !== "admin") {
+    return <Navigate to="/employee/dashboard" replace />;
+  }
+
+  return (
+    <>
+      {children}
+      <OmniAssistant />
+    </>
+  );
+}
+
+// Employee-only routes
+function EmployeeRoute({ children }) {
+  const { isAuthenticated, role } = getSession();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (role !== "employee") {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  return (
+    <>
+      {children}
+      <OmniAssistant />
+    </>
+  );
+}
 
 function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
         <Routes>
+
           {/* Public Routes */}
           <Route
             path="/"
@@ -49,91 +134,181 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Admin Routes */}
+          {/* Admin Dashboard */}
           <Route
             path="/admin/dashboard"
-            element={<AdminDashboard />}
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
           />
 
+          {/* Employee Dashboard */}
+          <Route
+            path="/employee/dashboard"
+            element={
+              <EmployeeRoute>
+                <EmployeeDashboard />
+              </EmployeeRoute>
+            }
+          />
+
+          {/* Admin Profile and Settings */}
           <Route
             path="/admin/profile"
-            element={<Profile />}
+            element={
+              <AdminRoute>
+                <Profile />
+              </AdminRoute>
+            }
           />
 
           <Route
             path="/admin/settings"
-            element={<Settings />}
+            element={
+              <AdminRoute>
+                <Settings />
+              </AdminRoute>
+            }
           />
 
           <Route
             path="/admin/change-password"
-            element={<ChangePassword />}
+            element={
+              <AdminRoute>
+                <ChangePassword />
+              </AdminRoute>
+            }
           />
 
           <Route
             path="/admin/approvals"
-            element={<Approvals />}
+            element={
+              <AdminRoute>
+                <Approvals />
+              </AdminRoute>
+            }
           />
 
-          {/* Transfer Admin Access */}
           <Route
             path="/admin/transfer"
-            element={<AdminTransfer />}
+            element={
+              <AdminRoute>
+                <AdminTransfer />
+              </AdminRoute>
+            }
           />
 
-          {/* Employee Management Routes */}
+          {/* Admin Employee Management */}
           <Route
             path="/employees"
-            element={<Employees />}
+            element={
+              <AdminRoute>
+                <Employees />
+              </AdminRoute>
+            }
           />
 
           <Route
             path="/employees/add"
-            element={<AddEmployee />}
+            element={
+              <AdminRoute>
+                <AddEmployee />
+              </AdminRoute>
+            }
           />
 
           <Route
             path="/employees/edit/:id"
-            element={<EditEmployee />}
+            element={
+              <AdminRoute>
+                <EditEmployee />
+              </AdminRoute>
+            }
           />
 
           <Route
             path="/employees/:id"
-            element={<EmployeeDetails />}
+            element={
+              <AdminRoute>
+                <EmployeeDetails />
+              </AdminRoute>
+            }
           />
 
-          {/* Document Routes */}
+          <Route
+            path="/employees/:id/documents"
+            element={
+              <AdminRoute>
+                <EmployeeDocuments />
+              </AdminRoute>
+            }
+          />
+
+          {/* General Documents */}
           <Route
             path="/documents"
-            element={<Documents />}
+            element={
+              <ProtectedRoute>
+                <Documents />
+              </ProtectedRoute>
+            }
           />
 
-          {/* Employee Routes */}
-          <Route
-            path="/employee/dashboard"
-            element={<EmployeeDashboard />}
-          />
-
+          {/* Employee Profile and Settings */}
           <Route
             path="/employee/profile"
-            element={<Profile />}
+            element={
+              <EmployeeRoute>
+                <Profile />
+              </EmployeeRoute>
+            }
           />
 
           <Route
             path="/employee/settings"
-            element={<Settings />}
+            element={
+              <EmployeeRoute>
+                <Settings />
+              </EmployeeRoute>
+            }
           />
 
           <Route
             path="/employee/change-password"
-            element={<ChangePassword />}
+            element={
+              <EmployeeRoute>
+                <ChangePassword />
+              </EmployeeRoute>
+            }
           />
 
-          {/* Unknown Routes */}
+          {/* Helpdesk Tickets: Both Admin and Employee */}
+          <Route
+            path="/tickets"
+            element={
+              <ProtectedRoute>
+                <Tickets />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/tickets/:id"
+            element={
+              <ProtectedRoute>
+                <TicketDetails />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Fallback */}
           <Route
             path="*"
             element={<Navigate to="/home" replace />}
           />
+
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

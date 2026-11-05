@@ -8,7 +8,7 @@ from pydantic import (
     Field,
     ConfigDict,
     field_validator,
-    model_validator,
+    model_validator
 )
 
 
@@ -18,6 +18,44 @@ from pydantic import (
 
 class BaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+# ==========================================
+# COMMON VALIDATION
+# ==========================================
+
+def validate_text(value: str | None):
+
+    if value is not None:
+
+        value = value.strip()
+
+        if len(value) < 2:
+            raise ValueError(
+                "Field must contain at least 2 characters"
+            )
+
+    return value
+
+
+def validate_birth_date(value: date | None):
+
+    if value is not None and value >= date.today():
+        raise ValueError(
+            "Date of birth must be in the past"
+        )
+
+    return value
+
+
+def validate_joining_date(value: date | None):
+
+    if value is not None and value > date.today():
+        raise ValueError(
+            "Joining date cannot be in the future"
+        )
+
+    return value
 
 
 # ==========================================
@@ -61,22 +99,24 @@ class EmployeeCreate(BaseRequest):
     )
     @classmethod
     def validate_text_fields(cls, value):
+        return validate_text(value)
 
-        value = value.strip()
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_dob(cls, value):
+        return validate_birth_date(value)
 
-        if len(value) < 2:
-            raise ValueError(
-                "Field must contain at least 2 characters"
-            )
-
-        return value
+    @field_validator("joining_date")
+    @classmethod
+    def validate_joining(cls, value):
+        return validate_joining_date(value)
 
     @model_validator(mode="after")
     def validate_dates(self) -> Self:
 
-        if self.joining_date < self.date_of_birth:
+        if self.joining_date <= self.date_of_birth:
             raise ValueError(
-                "Joining date cannot be before date of birth"
+                "Joining date must be after date of birth"
             )
 
         return self
@@ -84,7 +124,7 @@ class EmployeeCreate(BaseRequest):
 
 # ==========================================
 # UPDATE EMPLOYEE MODEL
-# Admin can update employee details
+# ADMIN ONLY
 # ==========================================
 
 class EmployeeUpdate(BaseRequest):
@@ -157,17 +197,17 @@ class EmployeeUpdate(BaseRequest):
     )
     @classmethod
     def validate_text_fields(cls, value):
+        return validate_text(value)
 
-        if value is not None:
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_dob(cls, value):
+        return validate_birth_date(value)
 
-            value = value.strip()
-
-            if len(value) < 2:
-                raise ValueError(
-                    "Field must contain at least 2 characters"
-                )
-
-        return value
+    @field_validator("joining_date")
+    @classmethod
+    def validate_joining(cls, value):
+        return validate_joining_date(value)
 
     @model_validator(mode="after")
     def validate_update(self) -> Self:
@@ -177,13 +217,20 @@ class EmployeeUpdate(BaseRequest):
                 "At least one field is required"
             )
 
+        for field in self.model_fields_set:
+
+            if getattr(self, field) is None:
+                raise ValueError(
+                    f"{field} cannot be null"
+                )
+
         if (
             self.date_of_birth is not None
             and self.joining_date is not None
-            and self.joining_date < self.date_of_birth
+            and self.joining_date <= self.date_of_birth
         ):
             raise ValueError(
-                "Joining date cannot be before date of birth"
+                "Joining date must be after date of birth"
             )
 
         return self
@@ -191,7 +238,7 @@ class EmployeeUpdate(BaseRequest):
 
 # ==========================================
 # PERSONAL PROFILE UPDATE MODEL
-# Employee/Admin can update own personal details
+# EMPLOYEE PERSONAL FIELDS ONLY
 # ==========================================
 
 class EmployeeProfileUpdate(BaseRequest):
@@ -236,17 +283,12 @@ class EmployeeProfileUpdate(BaseRequest):
     )
     @classmethod
     def validate_text_fields(cls, value):
+        return validate_text(value)
 
-        if value is not None:
-
-            value = value.strip()
-
-            if len(value) < 2:
-                raise ValueError(
-                    "Field must contain at least 2 characters"
-                )
-
-        return value
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_dob(cls, value):
+        return validate_birth_date(value)
 
     @model_validator(mode="after")
     def validate_update(self) -> Self:
@@ -256,12 +298,18 @@ class EmployeeProfileUpdate(BaseRequest):
                 "At least one field is required"
             )
 
+        for field in self.model_fields_set:
+
+            if getattr(self, field) is None:
+                raise ValueError(
+                    f"{field} cannot be null"
+                )
+
         return self
 
 
 # ==========================================
 # ADMIN PROFESSIONAL PROFILE UPDATE MODEL
-# Only Admin can update own professional details
 # ==========================================
 
 class AdminProfessionalProfileUpdate(BaseRequest):
@@ -298,17 +346,12 @@ class AdminProfessionalProfileUpdate(BaseRequest):
     )
     @classmethod
     def validate_text_fields(cls, value):
+        return validate_text(value)
 
-        if value is not None:
-
-            value = value.strip()
-
-            if len(value) < 2:
-                raise ValueError(
-                    "Field must contain at least 2 characters"
-                )
-
-        return value
+    @field_validator("joining_date")
+    @classmethod
+    def validate_joining(cls, value):
+        return validate_joining_date(value)
 
     @model_validator(mode="after")
     def validate_update(self) -> Self:
@@ -317,5 +360,12 @@ class AdminProfessionalProfileUpdate(BaseRequest):
             raise ValueError(
                 "At least one professional field is required"
             )
+
+        for field in self.model_fields_set:
+
+            if getattr(self, field) is None:
+                raise ValueError(
+                    f"{field} cannot be null"
+                )
 
         return self

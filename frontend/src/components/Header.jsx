@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -9,6 +10,7 @@ import {
 
 import "./Header.css";
 
+// Page titles
 const pageTitles = {
   "/admin/dashboard": "Dashboard",
   "/employees": "Employees",
@@ -17,11 +19,15 @@ const pageTitles = {
   "/documents": "Documents",
   "/admin/profile": "My Profile",
   "/admin/settings": "Settings",
+  "/admin/change-password": "Change Password",
+  "/admin/transfer": "Transfer Admin Access",
+
   "/employee/dashboard": "Dashboard",
   "/employee/profile": "My Profile",
   "/employee/settings": "Settings",
-  "/admin/change-password": "Change Password",
   "/employee/change-password": "Change Password",
+
+  "/tickets": "Support Tickets",
 };
 
 function getGreeting() {
@@ -41,23 +47,28 @@ function Header() {
   const [greeting, setGreeting] = useState(getGreeting());
   const [search, setSearch] = useState("");
 
+  // Get logged-in user
   let user = {};
 
   try {
-    user = JSON.parse(localStorage.getItem("user") || "{}");
+    user = JSON.parse(
+      localStorage.getItem("user") || "{}"
+    );
   } catch {
     user = {};
   }
 
-  const role = (
+  // Identify role
+  const role = String(
     user.role ||
-    (location.pathname.startsWith("/admin")
-      ? "admin"
-      : "employee")
+      (location.pathname.startsWith("/admin")
+        ? "admin"
+        : "employee")
   ).toLowerCase();
 
   const isAdmin = role === "admin";
 
+  // Update greeting periodically
   useEffect(() => {
     const updateGreeting = () => {
       setGreeting(getGreeting());
@@ -70,6 +81,7 @@ function Header() {
 
   const pathname = location.pathname;
 
+  // Dynamic page title
   const title =
     pageTitles[pathname] ||
     (pathname.startsWith("/employees/edit/")
@@ -79,7 +91,9 @@ function Header() {
         ? "Employee Documents"
         : pathname.startsWith("/employees/")
           ? "Employee Details"
-          : "OMNIX");
+          : pathname.startsWith("/tickets/")
+            ? "Ticket Details"
+            : "OMNIX");
 
   const displayName =
     user.name ||
@@ -90,6 +104,7 @@ function Header() {
 
   const isDashboard = pathname.includes("dashboard");
 
+  // Admin employee search
   const handleSearch = (event) => {
     event.preventDefault();
 
@@ -97,18 +112,26 @@ function Header() {
 
     if (!query || !isAdmin) return;
 
-    navigate(`/employees?search=${encodeURIComponent(query)}`);
+    navigate(
+      `/employees?search=${encodeURIComponent(query)}`
+    );
   };
 
+  // Profile navigation
   const handleProfileNavigation = () => {
     navigate(
-      isAdmin ? "/admin/profile" : "/employee/profile"
+      isAdmin
+        ? "/admin/profile"
+        : "/employee/profile"
     );
   };
 
   return (
     <header className="omnix-header">
+
+      {/* Header Title */}
       <div className="omnix-header-title">
+
         <span className="omnix-header-breadcrumb">
           OMNIX / {role.toUpperCase()}
         </span>
@@ -119,7 +142,9 @@ function Header() {
             : title}
 
           {isDashboard && (
-            <span className="omnix-greeting-wave"> 👋</span>
+            <span className="omnix-greeting-wave">
+              {" "}👋
+            </span>
           )}
         </h1>
 
@@ -128,9 +153,13 @@ function Header() {
             ? "Here's what's happening in your organization today."
             : `Home / ${title}`}
         </p>
+
       </div>
 
+      {/* Header Right Section */}
       <div className="omnix-header-right">
+
+        {/* Admin Search */}
         {isAdmin && (
           <form
             className="omnix-search"
@@ -150,15 +179,18 @@ function Header() {
           </form>
         )}
 
+        {/* Notifications */}
         <div
           className="omnix-notification-btn"
           title="Notifications are not configured yet"
           aria-label="Notifications"
         >
           <Bell size={20} />
+
           <span className="omnix-notification-dot" />
         </div>
 
+        {/* User Profile */}
         <button
           type="button"
           className="omnix-header-user"
@@ -173,13 +205,17 @@ function Header() {
             <strong>{displayName}</strong>
 
             <span>
-              {isAdmin ? "Administrator" : "Employee"}
+              {isAdmin
+                ? "Administrator"
+                : "Employee"}
             </span>
           </div>
 
           <ChevronDown size={16} />
         </button>
+
       </div>
+
     </header>
   );
 }

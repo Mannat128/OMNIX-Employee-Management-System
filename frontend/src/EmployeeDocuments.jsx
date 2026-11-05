@@ -1,6 +1,15 @@
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -19,14 +28,18 @@ import {
   CalendarDays,
   FolderOpen,
   ScanText,
+  ShieldAlert,
+  LoaderCircle,
 } from "lucide-react";
 
+import API from "./api";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import "./EmployeeDocuments.css";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = API.defaults.baseURL;
 
+// Helpers
 function formatDate(value) {
   if (!value) return "—";
 
@@ -55,27 +68,24 @@ function getDocumentType(documentItem) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-async function downloadFile(url, token, filename) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+function getPhotoUrl(photo) {
+  if (!photo || typeof photo !== "string") return "";
 
-  if (!response.ok) {
-    let message = "Unable to download the file.";
+  if (/^https?:\/\//i.test(photo)) return photo;
 
-    try {
-      const data = await response.json();
-      message = data.detail || message;
-    } catch {
-      // Use default message
-    }
+  return `${API_URL}/${photo.replace(/^\/+/, "")}`;
+}
 
-    throw new Error(message);
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
   }
+}
 
-  const blob = await response.blob();
+// Download helper
+function saveBlob(blob, filename) {
   const objectUrl = window.URL.createObjectURL(blob);
 
   const link = document.createElement("a");
@@ -89,9 +99,14 @@ async function downloadFile(url, token, filename) {
   window.URL.revokeObjectURL(objectUrl);
 }
 
+// Recursive OCR value renderer
 function OCRValue({ value }) {
   if (value === null || value === undefined || value === "") {
-    return <span className="ocr-empty-value">Not available</span>;
+    return (
+      <span className="ocr-empty-value">
+        Not available
+      </span>
+    );
   }
 
   if (typeof value === "boolean") {
@@ -100,7 +115,11 @@ function OCRValue({ value }) {
 
   if (Array.isArray(value)) {
     if (!value.length) {
-      return <span className="ocr-empty-value">No data</span>;
+      return (
+        <span className="ocr-empty-value">
+          No data
+        </span>
+      );
     }
 
     return (
@@ -142,6 +161,10 @@ function EmployeeDocuments() {
   const navigate = useNavigate();
 
   const token = localStorage.getItem("access_token");
+  const currentUser = getStoredUser();
+
+  const isAdmin =
+    String(currentUser.role || "").toLowerCase() === "admin";
 
   const [employee, setEmployee] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -160,37 +183,42 @@ function EmployeeDocuments() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  // Handle expired login session
   const handleUnauthorized = useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user");
+
     navigate("/login", { replace: true });
   }, [navigate]);
 
-  const apiRequest = useCallback(
-    async (url, options = {}) => {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          ...options.headers,
-        },
-      });
+  // Handle API errors consistently
+  const handleApiError = useCallback(
+    (err, fallbackMessage) => {
+      const status = err.response?.status;
 
-      if (response.status === 401) {
+      if (status === 401) {
         handleUnauthorized();
-        throw new Error("Your session has expired. Please login again.");
+        return;
       }
 
-      if (response.status === 403) {
-        throw new Error("You do not have permission to access this resource.");
+      if (status === 403) {
+        throw new Error(
+          err.response?.data?.detail ||
+          "You do not have permission to access this resource."
+        );
       }
 
-      return response;
+      throw new Error(
+        err.response?.data?.detail ||
+        (err.code === "ERR_NETWORK"
+          ? "Unable to connect to the backend server."
+          : fallbackMessage)
+      );
     },
-    [token, handleUnauthorized]
+    [handleUnauthorized]
   );
 
+  // Fetch employee and document information
   const fetchPageData = useCallback(
     async (showLoader = true) => {
       if (!token) {
@@ -198,29 +226,25 @@ function EmployeeDocuments() {
         return;
       }
 
+      if (!isAdmin) {
+        setLoading(false);
+        return;
+      }
+
       try {
         if (showLoader) setLoading(true);
+
         setError("");
 
-        const [employeeResponse, documentsResponse] = await Promise.all([
-          apiRequest(`${API_URL}/employees/${id}`),
-          apiRequest(`${API_URL}/documents/`),
-        ]);
+        const [employeeResponse, documentsResponse] =
+          await Promise.all([
+            API.get(`/employees/${id}`),
+            API.get("/documents/"),
+          ]);
 
-        const employeeData = await employeeResponse.json();
-        const documentsData = await documentsResponse.json();
+        const employeeData = employeeResponse.data;
 
-        if (!employeeResponse.ok) {
-          throw new Error(
-            employeeData.detail || "Unable to load employee details."
-          );
-        }
-
-        if (!documentsResponse.ok) {
-          throw new Error(
-            documentsData.detail || "Unable to load documents."
-          );
-        }
+        const documentsData = documentsResponse.data;
 
         setEmployee(employeeData);
 
@@ -228,11 +252,11 @@ function EmployeeDocuments() {
           ? documentsData
           : documentsData.documents || [];
 
+        // Backend employee_id is the employee MongoDB ObjectId.
         const employeeIds = [
           id,
           employeeData.id,
           employeeData._id,
-          employeeData.employee_id,
         ]
           .filter(Boolean)
           .map(String);
@@ -243,40 +267,53 @@ function EmployeeDocuments() {
 
         setDocuments(employeeDocuments);
       } catch (err) {
-        if (
-          err.message !== "Your session has expired. Please login again."
-        ) {
-          setError(
-            err.message === "Failed to fetch"
-              ? "Unable to connect to the backend server."
-              : err.message
+        try {
+          handleApiError(
+            err,
+            "Unable to load employee documents."
           );
+        } catch (handledError) {
+          setError(handledError.message);
         }
       } finally {
         if (showLoader) setLoading(false);
       }
     },
-    [id, token, apiRequest, handleUnauthorized]
+    [id, token, isAdmin, handleUnauthorized, handleApiError]
   );
 
   useEffect(() => {
+    if (!token) {
+      handleUnauthorized();
+      return;
+    }
+
+    if (!isAdmin) {
+      setLoading(false);
+      return;
+    }
+
     fetchPageData();
-  }, [fetchPageData]);
+  }, [token, isAdmin, fetchPageData, handleUnauthorized]);
 
+  // Automatically refresh while OCR is processing
   const hasProcessingDocuments = documents.some((item) =>
-    ["pending", "processing"].includes(normalizeStatus(item.ocr_status))
+    ["pending", "processing"].includes(
+      normalizeStatus(item.ocr_status)
+    )
   );
 
   useEffect(() => {
-    if (!hasProcessingDocuments) return;
+    if (!isAdmin || !hasProcessingDocuments) return;
 
     const interval = window.setInterval(() => {
       fetchPageData(false);
     }, 5000);
 
     return () => window.clearInterval(interval);
-  }, [hasProcessingDocuments, fetchPageData]);
+  }, [isAdmin, hasProcessingDocuments, fetchPageData]);
 
+  // View OCR result
   const handleViewOCR = async (documentItem) => {
     try {
       setSelectedDocument(documentItem);
@@ -285,24 +322,23 @@ function EmployeeDocuments() {
       setError("");
       setNotice("");
 
-      const response = await apiRequest(
-        `${API_URL}/ocr/results/${documentItem.id}`
+      const response = await API.get(
+        `/ocr/results/${documentItem.id}`
       );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Unable to load OCR result.");
-      }
-
-      setOcrResult(data);
+      setOcrResult(response.data);
     } catch (err) {
-      setError(err.message);
+      try {
+        handleApiError(err, "Unable to load OCR result.");
+      } catch (handledError) {
+        setError(handledError.message);
+      }
     } finally {
       setOcrLoading(false);
     }
   };
 
+  // Retry OCR
   const handleRetryOCR = async (documentItem) => {
     if (!documentItem?.id) return;
 
@@ -311,100 +347,93 @@ function EmployeeDocuments() {
       setError("");
       setNotice("");
 
-      const response = await apiRequest(
-        `${API_URL}/ocr/retry/${documentItem.id}`,
-        { method: "POST" }
+      const response = await API.post(
+        `/ocr/retry/${documentItem.id}`
       );
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Unable to retry OCR processing."
-        );
-      }
-
-      setNotice("OCR processing has been queued successfully.");
+      setNotice(
+        response.data?.message ||
+        "OCR processing has been queued successfully."
+      );
 
       setOcrResult(null);
 
-      await fetchPageData();
-
       setSelectedDocument((previous) =>
         previous?.id === documentItem.id
-          ? { ...previous, ocr_status: "processing" }
+          ? { ...previous, ocr_status: "pending" }
           : previous
       );
+
+      await fetchPageData(false);
     } catch (err) {
-      setError(err.message);
+      try {
+        handleApiError(err, "Unable to retry OCR processing.");
+      } catch (handledError) {
+        setError(handledError.message);
+      }
     } finally {
       setRetryLoading(false);
     }
   };
 
+  // Download original document
   const handleDownload = async (documentItem) => {
     try {
       setDownloadLoading(documentItem.id);
       setError("");
 
-      await downloadFile(
-        `${API_URL}/documents/${documentItem.id}/download`,
-        token,
-        documentItem.file_name
+      const response = await API.get(
+        `/documents/${documentItem.id}/download`,
+        { responseType: "blob" }
+      );
+
+      saveBlob(
+        response.data,
+        documentItem.file_name || "document"
       );
 
       setNotice("Document downloaded successfully.");
     } catch (err) {
-      setError(err.message);
+      try {
+        handleApiError(err, "Unable to download the document.");
+      } catch (handledError) {
+        setError(handledError.message);
+      }
     } finally {
       setDownloadLoading(null);
     }
   };
 
+  // Export employee OCR results to Excel
   const handleExport = async () => {
     try {
       setExportLoading(true);
       setError("");
       setNotice("");
 
-      const response = await apiRequest(
-        `${API_URL}/ocr/export?format=xlsx&employee_id=${encodeURIComponent(id)}`
+      const response = await API.get(
+        `/ocr/export?format=xlsx&employee_id=${encodeURIComponent(id)}`,
+        { responseType: "blob" }
       );
 
-      if (!response.ok) {
-        let message = "Unable to export OCR results.";
-
-        try {
-          const data = await response.json();
-          message = data.detail || message;
-        } catch {
-          // Use default message
-        }
-
-        throw new Error(message);
-      }
-
-      const blob = await response.blob();
-      const objectUrl = window.URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `employee_${id}_ocr_results.xlsx`;
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      window.URL.revokeObjectURL(objectUrl);
+      saveBlob(
+        response.data,
+        `employee_${id}_ocr_results.xlsx`
+      );
 
       setNotice("Excel report exported successfully.");
     } catch (err) {
-      setError(err.message);
+      try {
+        handleApiError(err, "Unable to export OCR results.");
+      } catch (handledError) {
+        setError(handledError.message);
+      }
     } finally {
       setExportLoading(false);
     }
   };
 
+  // Search and status filtering
   const filteredDocuments = useMemo(() => {
     const query = search.toLowerCase().trim();
 
@@ -428,15 +457,19 @@ function EmployeeDocuments() {
   }, [documents, search, statusFilter]);
 
   const completedCount = documents.filter(
-    (item) => normalizeStatus(item.ocr_status) === "completed"
+    (item) =>
+      normalizeStatus(item.ocr_status) === "completed"
   ).length;
 
   const processingCount = documents.filter((item) =>
-    ["pending", "processing"].includes(normalizeStatus(item.ocr_status))
+    ["pending", "processing"].includes(
+      normalizeStatus(item.ocr_status)
+    )
   ).length;
 
   const failedCount = documents.filter(
-    (item) => normalizeStatus(item.ocr_status) === "failed"
+    (item) =>
+      normalizeStatus(item.ocr_status) === "failed"
   ).length;
 
   const closeOCRModal = () => {
@@ -446,6 +479,41 @@ function EmployeeDocuments() {
   };
 
   const employeeName = employee?.name || "Employee";
+
+  // Frontend Admin-only restriction
+  if (!token) {
+    return null;
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="employee-documents-page">
+        <main className="employee-documents-main">
+          <section className="employee-details-state">
+            <div className="employee-details-state-icon error">
+              <ShieldAlert size={30} />
+            </div>
+
+            <h2>Access Restricted</h2>
+
+            <p>
+              This page is available only to Admin accounts.
+            </p>
+
+            <button
+              type="button"
+              className="employee-details-primary-btn"
+              onClick={() =>
+                navigate("/employee/dashboard", { replace: true })
+              }
+            >
+              Go to Dashboard
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="employee-documents-page">
@@ -489,6 +557,7 @@ function EmployeeDocuments() {
               ) : (
                 <FileSpreadsheet size={17} />
               )}
+
               {exportLoading ? "Exporting..." : "Export Excel"}
             </button>
           </section>
@@ -497,6 +566,7 @@ function EmployeeDocuments() {
             <div className="employee-doc-alert employee-doc-error">
               <AlertCircle size={17} />
               <span>{error}</span>
+
               <button
                 type="button"
                 onClick={() => setError("")}
@@ -511,6 +581,7 @@ function EmployeeDocuments() {
             <div className="employee-doc-alert employee-doc-success">
               <CheckCircle2 size={17} />
               <span>{notice}</span>
+
               <button
                 type="button"
                 onClick={() => setNotice("")}
@@ -525,12 +596,8 @@ function EmployeeDocuments() {
             <div className="employee-profile-avatar">
               {employee?.profile_photo ? (
                 <img
-                  src={
-                    employee.profile_photo.startsWith("http")
-                      ? employee.profile_photo
-                      : `${API_URL}${employee.profile_photo}`
-                  }
-                  alt=""
+                  src={getPhotoUrl(employee.profile_photo)}
+                  alt={employee.name || "Employee"}
                 />
               ) : (
                 <UserRound size={28} />
@@ -546,7 +613,9 @@ function EmployeeDocuments() {
             <div className="employee-profile-meta">
               <div>
                 <small>Employee ID</small>
-                <strong>{employee?.employee_id || id}</strong>
+                <strong>
+                  {employee?.employee_id || id}
+                </strong>
               </div>
 
               <div>
@@ -609,7 +678,9 @@ function EmployeeDocuments() {
                 <span className="employee-documents-section-label">
                   DOCUMENT LIBRARY
                 </span>
+
                 <h2>Uploaded Documents</h2>
+
                 <p>
                   View files, download originals and inspect extracted data.
                 </p>
@@ -632,17 +703,22 @@ function EmployeeDocuments() {
             <div className="employee-documents-toolbar">
               <div className="employee-doc-search">
                 <Search size={17} />
+
                 <input
                   type="search"
                   placeholder="Search documents..."
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
                 />
               </div>
 
               <select
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value)
+                }
               >
                 <option value="All">All OCR Status</option>
                 <option value="completed">Completed</option>
@@ -668,6 +744,10 @@ function EmployeeDocuments() {
                   {loading ? (
                     <tr>
                       <td colSpan="5" className="employee-doc-empty">
+                        <LoaderCircle
+                          size={22}
+                          className="employee-spin"
+                        />
                         Loading documents...
                       </td>
                     </tr>
@@ -694,10 +774,12 @@ function EmployeeDocuments() {
                               <div className="employee-doc-file-icon">
                                 <FileText size={19} />
                               </div>
+
                               <div>
                                 <strong>
                                   {item.file_name || "Unnamed file"}
                                 </strong>
+
                                 <small>
                                   {item.employee_name || employeeName}
                                 </small>
@@ -780,6 +862,7 @@ function EmployeeDocuments() {
         </div>
       </main>
 
+      {/* OCR result modal */}
       {selectedDocument && (
         <div
           className="employee-ocr-overlay"
@@ -825,19 +908,28 @@ function EmployeeDocuments() {
                   <span>Employee</span>
                   <strong>{employeeName}</strong>
                 </div>
+
                 <div>
                   <span>Document Type</span>
-                  <strong>{getDocumentType(selectedDocument)}</strong>
+                  <strong>
+                    {getDocumentType(selectedDocument)}
+                  </strong>
                 </div>
+
                 <div>
                   <span>Upload Date</span>
-                  <strong>{formatDate(selectedDocument.upload_date)}</strong>
+                  <strong>
+                    {formatDate(selectedDocument.upload_date)}
+                  </strong>
                 </div>
               </div>
 
               {ocrLoading ? (
                 <div className="employee-ocr-loading">
-                  <RefreshCw size={25} className="employee-spin" />
+                  <RefreshCw
+                    size={25}
+                    className="employee-spin"
+                  />
                   <p>Loading OCR extraction results...</p>
                 </div>
               ) : ocrResult ? (
@@ -877,8 +969,8 @@ function EmployeeDocuments() {
                       <FileText size={28} />
                       <h3>No extracted information</h3>
                       <p>
-                        OCR has not returned structured information for
-                        this document yet.
+                        OCR has not returned structured information
+                        for this document yet.
                       </p>
                     </div>
                   )}
@@ -887,7 +979,9 @@ function EmployeeDocuments() {
                 <div className="employee-ocr-no-data">
                   <AlertCircle size={28} />
                   <h3>OCR result unavailable</h3>
-                  <p>The extraction result could not be loaded.</p>
+                  <p>
+                    The extraction result could not be loaded.
+                  </p>
                 </div>
               )}
             </div>

@@ -1,9 +1,10 @@
 
 import os
+import logging
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -16,16 +17,26 @@ from database.connection import (
     tickets
 )
 
-# Existing routers
+# Routers
 from routes.auth import router as auth_router
 from routes.admin import router as admin_router
 from routes.employees import router as employee_router
 from routes.documents import router as documents_router
 from routes.ocr import router as ocr_router
 from routes.profile import router as profile_router
-
-# OMNI Helpdesk router
 from routes.tickets import router as tickets_router
+
+
+# ==========================================
+# LOGGING CONFIGURATION
+# ==========================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 
 # ==========================================
@@ -38,7 +49,7 @@ BASE_DIR = os.path.dirname(
 
 
 # ==========================================
-# PROFILE PHOTO DIRECTORY
+# UPLOAD DIRECTORIES
 # ==========================================
 
 PROFILE_PHOTO_DIR = os.path.join(
@@ -47,26 +58,14 @@ PROFILE_PHOTO_DIR = os.path.join(
     "profile_photos"
 )
 
-os.makedirs(
-    PROFILE_PHOTO_DIR,
-    exist_ok=True
-)
-
-
-# ==========================================
-# TICKET ATTACHMENT DIRECTORY
-# ==========================================
-
 TICKET_UPLOAD_DIR = os.path.join(
     BASE_DIR,
     "uploads",
     "tickets"
 )
 
-os.makedirs(
-    TICKET_UPLOAD_DIR,
-    exist_ok=True
-)
+os.makedirs(PROFILE_PHOTO_DIR, exist_ok=True)
+os.makedirs(TICKET_UPLOAD_DIR, exist_ok=True)
 
 
 # ==========================================
@@ -77,11 +76,10 @@ os.makedirs(
 async def lifespan(app: FastAPI):
 
     try:
-
         # Check MongoDB connection
         client.admin.command("ping")
 
-        print("MongoDB connected successfully!")
+        logger.info("MongoDB connected successfully")
 
         # Users collection indexes
         users.create_index(
@@ -108,13 +106,8 @@ async def lifespan(app: FastAPI):
         )
 
         # Documents collection indexes
-        documents.create_index(
-            "employee_id"
-        )
-
-        documents.create_index(
-            "user_id"
-        )
+        documents.create_index("employee_id")
+        documents.create_index("user_id")
 
         # OCR results collection indexes
         ocr_results.create_index(
@@ -122,9 +115,7 @@ async def lifespan(app: FastAPI):
             unique=True
         )
 
-        ocr_results.create_index(
-            "employee_id"
-        )
+        ocr_results.create_index("employee_id")
 
         # OMNI Helpdesk indexes
         tickets.create_index(
@@ -132,29 +123,25 @@ async def lifespan(app: FastAPI):
             unique=True
         )
 
-        tickets.create_index(
-            "created_by"
-        )
+        tickets.create_index("created_by")
+        tickets.create_index("status")
+        tickets.create_index("created_at")
 
-        tickets.create_index(
-            "status"
-        )
-
-        tickets.create_index(
-            "created_at"
-        )
-
-        print("MongoDB indexes created successfully!")
-        print("Employee Management System API started!")
-        print("OMNI Helpdesk module registered!")
+        logger.info("MongoDB indexes created successfully")
+        logger.info("Employee Management System API started")
+        logger.info("OMNI Helpdesk module registered")
 
         yield
 
+    except Exception:
+        logger.exception(
+            "Application startup or runtime lifecycle failed"
+        )
+        raise
+
     finally:
-
         client.close()
-
-        print("MongoDB connection closed.")
+        logger.info("MongoDB connection closed")
 
 
 # ==========================================
@@ -189,15 +176,14 @@ app.add_middleware(
     ],
 
     allow_credentials=True,
-
     allow_methods=["*"],
-
     allow_headers=["*"]
 )
 
 
 # ==========================================
 # SERVE PROFILE PHOTOS
+# Public access
 # ==========================================
 
 app.mount(
@@ -215,55 +201,42 @@ app.mount(
 # REGISTER API ROUTERS
 # ==========================================
 
-# Authentication
 app.include_router(
     auth_router,
     prefix="/auth",
     tags=["Authentication"]
 )
 
-
-# Admin
 app.include_router(
     admin_router,
     prefix="/admin",
     tags=["Admin"]
 )
 
-
-# Employees
 app.include_router(
     employee_router,
     prefix="/employees",
     tags=["Employees"]
 )
 
-
-# Documents
 app.include_router(
     documents_router,
     prefix="/documents",
     tags=["Documents"]
 )
 
-
-# OCR
 app.include_router(
     ocr_router,
     prefix="/ocr",
     tags=["OCR"]
 )
 
-
-# Profile Management
 app.include_router(
     profile_router,
     prefix="/profile",
     tags=["Profile Management"]
 )
 
-
-# OMNI Helpdesk
 app.include_router(
     tickets_router,
     prefix="/tickets",
@@ -301,7 +274,6 @@ def home():
 def database_check():
 
     try:
-
         client.admin.command("ping")
 
         return {
@@ -310,8 +282,9 @@ def database_check():
         }
 
     except Exception:
+        logger.exception("MongoDB health check failed")
 
-        return {
-            "message": "MongoDB connection failed",
-            "status": "disconnected"
-        }
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database is currently unavailable"
+        )

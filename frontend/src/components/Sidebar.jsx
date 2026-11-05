@@ -1,4 +1,6 @@
 
+import { useEffect } from "react";
+
 import {
   Link,
   useLocation,
@@ -14,6 +16,7 @@ import {
   UserRound,
   LogOut,
   ArrowRightLeft,
+  LifeBuoy,
 } from "lucide-react";
 
 import "./Sidebar.css";
@@ -35,10 +38,28 @@ function Sidebar({ role }) {
 
   // Identify current role
   const currentRole = String(
-    user.role || role || "employee"
+    user.role || role || ""
   ).toLowerCase();
 
+  const isValidRole = ["admin", "employee"].includes(
+    currentRole
+  );
+
   const isAdmin = currentRole === "admin";
+
+  // Validate session
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+
+    if (!token || !isValidRole) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user");
+
+      navigate("/login", {
+        replace: true,
+      });
+    }
+  }, [navigate, isValidRole]);
 
   // Admin navigation
   const adminLinks = [
@@ -98,7 +119,9 @@ function Sidebar({ role }) {
     },
   ];
 
-  const links = isAdmin ? adminLinks : employeeLinks;
+  const links = isAdmin
+    ? adminLinks
+    : employeeLinks;
 
   // User information
   const displayName =
@@ -131,10 +154,18 @@ function Sidebar({ role }) {
     return false;
   };
 
+  // Prevent rendering with invalid session
+  if (
+    !isValidRole ||
+    !localStorage.getItem("access_token")
+  ) {
+    return null;
+  }
+
   return (
     <aside className="omnix-sidebar">
 
-      {/* Final OMNIX EMS Logo */}
+      {/* OMNIX Logo */}
       <Link
         to={
           isAdmin
@@ -162,7 +193,9 @@ function Sidebar({ role }) {
           <strong>{displayName}</strong>
 
           <span>
-            {isAdmin ? "Admin Account" : "Employee Account"}
+            {isAdmin
+              ? "Admin Account"
+              : "Employee Account"}
           </span>
         </div>
 
@@ -201,6 +234,43 @@ function Sidebar({ role }) {
         })}
 
       </nav>
+
+      {/* Help and Support Footer */}
+      <div className="omnix-sidebar-footer">
+
+        <Link
+          to="/tickets"
+          className="omnix-help-card"
+          style={{
+            textDecoration: "none",
+            width: "100%",
+          }}
+        >
+
+          <div className="omnix-help-icon">
+            <LifeBuoy size={19} />
+          </div>
+
+          <strong>
+            {isAdmin
+              ? "Support Center"
+              : "Need Help?"}
+          </strong>
+
+          <span>
+            {isAdmin
+              ? "Manage employee support tickets and respond to requests."
+              : "Contact support or create a ticket for assistance."}
+          </span>
+
+        </Link>
+
+        {/* Application Version */}
+        <div className="omnix-sidebar-version">
+          OMNIX EMS · Version 1.0
+        </div>
+
+      </div>
 
       {/* Logout */}
       <button

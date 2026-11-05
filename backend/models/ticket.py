@@ -1,8 +1,13 @@
 
-from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    field_validator,
+    model_validator
+)
 
 
 # ==========================================
@@ -10,12 +15,14 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 # ==========================================
 
 class BaseRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+
+    model_config = ConfigDict(
+        extra="forbid"
+    )
 
 
 # ==========================================
 # CREATE TICKET MODEL
-# Employee raises a new support ticket
 # ==========================================
 
 class TicketCreate(BaseRequest):
@@ -38,21 +45,36 @@ class TicketCreate(BaseRequest):
         max_length=3000
     )
 
-    @field_validator("subject", "description")
+    @field_validator("subject")
     @classmethod
-    def validate_text_fields(cls, value):
+    def validate_subject(cls, value):
 
         value = value.strip()
 
-        if not value:
-            raise ValueError("This field cannot be empty")
+        if len(value) < 5:
+            raise ValueError(
+                "Subject must contain at least 5 characters"
+            )
+
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value):
+
+        value = value.strip()
+
+        if len(value) < 10:
+            raise ValueError(
+                "Description must contain at least 10 characters"
+            )
 
         return value
 
 
 # ==========================================
 # UPDATE TICKET MODEL
-# Admin updates ticket status and priority
+# Admin updates status and priority
 # ==========================================
 
 class TicketUpdate(BaseRequest):
@@ -70,6 +92,23 @@ class TicketUpdate(BaseRequest):
         "High",
         "Urgent"
     ] | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self) -> Self:
+
+        if not self.model_fields_set:
+            raise ValueError(
+                "At least one field is required"
+            )
+
+        for field in self.model_fields_set:
+
+            if getattr(self, field) is None:
+                raise ValueError(
+                    f"{field} cannot be null"
+                )
+
+        return self
 
 
 # ==========================================
@@ -91,6 +130,8 @@ class TicketReply(BaseRequest):
         value = value.strip()
 
         if not value:
-            raise ValueError("Reply cannot be empty")
+            raise ValueError(
+                "Reply cannot be empty"
+            )
 
         return value

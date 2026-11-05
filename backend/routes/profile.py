@@ -1,20 +1,22 @@
 
-import os
 import uuid
+import logging
 
-from datetime import datetime, timezone
+from pathlib import Path
+from datetime import datetime, timezone, date
 
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     UploadFile,
-    File
+    File,
+    status
 )
 
 from pymongo.errors import DuplicateKeyError
 
-from database.connection import users, employees
+from database.connection import client, users, employees
 
 from dependencies.auth import require_password_changed
 
@@ -25,23 +27,13 @@ from models.employee import (
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ==========================================
-# PROFILE PHOTO DIRECTORY
-# ==========================================
+PROFILE_PHOTO_DIR = BASE_DIR / "uploads" / "profile_photos"
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
-
-PROFILE_PHOTO_DIR = os.path.join(
-    BASE_DIR,
-    "uploads",
-    "profile_photos"
-)
-
-os.makedirs(PROFILE_PHOTO_DIR, exist_ok=True)
+PROFILE_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_FILE_SIZE = 2 * 1024 * 1024
 
@@ -88,40 +80,24 @@ def serialize_profile(user, employee=None):
 
     return {
         "id": str(user["_id"]),
-
         "name": user.get("name") or employee.get("name"),
-
         "email": user.get("email") or employee.get("email"),
-
         "role": user.get("role"),
-
         "status": user.get("status"),
 
         # Personal Information
-        "phone": employee.get(
-            "phone",
-            user.get("phone")
+        "phone": employee.get("phone") or user.get("phone"),
+
+        "date_of_birth": (
+            employee.get("date_of_birth")
+            or user.get("date_of_birth")
         ),
 
-        "date_of_birth": employee.get(
-            "date_of_birth",
-            user.get("date_of_birth")
-        ),
+        "gender": employee.get("gender") or user.get("gender"),
 
-        "gender": employee.get(
-            "gender",
-            user.get("gender")
-        ),
+        "city": employee.get("city") or user.get("city"),
 
-        "city": employee.get(
-            "city",
-            user.get("city")
-        ),
-
-        "state": employee.get(
-            "state",
-            user.get("state")
-        ),
+        "state": employee.get("state") or user.get("state"),
 
         "profile_photo": get_photo_url(
             user,
@@ -129,36 +105,85 @@ def serialize_profile(user, employee=None):
         ),
 
         # Professional Information
-        "employee_id": employee.get(
-            "employee_id",
-            user.get("employee_id")
+        "employee_id": (
+            employee.get("employee_id")
+            or user.get("employee_id")
         ),
 
-        "department": user.get(
-            "department",
-            employee.get("department")
+        "department": (
+            user.get("department")
+            or employee.get("department")
         ),
 
-        "designation": user.get(
-            "designation",
-            employee.get("designation")
+        "designation": (
+            user.get("designation")
+            or employee.get("designation")
         ),
 
-        "joining_date": user.get(
-            "joining_date",
-            employee.get("joining_date")
+        "joining_date": (
+            user.get("joining_date")
+            or employee.get("joining_date")
         ),
 
-        "employment_type": user.get(
-            "employment_type",
-            employee.get("employment_type")
+        "employment_type": (
+            user.get("employment_type")
+            or employee.get("employment_type")
         ),
 
-        "employment_status": user.get(
-            "employment_status",
-            employee.get("employment_status")
+        "employment_status": (
+            user.get("employment_status")
+            or employee.get("employment_status")
         )
     }
+
+
+# ==========================================
+# HELPER: DATE CONVERSION
+# ==========================================
+
+def convert_to_date(value):
+
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
+    if isinstance(value, str):
+
+        try:
+            return date.fromisoformat(value)
+
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format in existing profile"
+            )
+
+    return None
+
+
+# ==========================================
+# HELPER: VALIDATE EMPLOYMENT DATES
+# ==========================================
+
+def validate_employment_dates(
+    date_of_birth,
+    joining_date
+):
+
+    dob = convert_to_date(date_of_birth)
+    joining = convert_to_date(joining_date)
+
+    if dob and joining and joining < dob:
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Joining date cannot be before date of birth"
+        )
 
 
 # ==========================================
@@ -170,79 +195,120 @@ def remove_old_photo(photo_url):
     if not photo_url:
         return
 
+    if not isinstance(photo_url, str):
+        return
+
     if not photo_url.startswith(
         "/uploads/profile_photos/"
     ):
         return
 
-    filename = os.path.basename(photo_url)
+    filename = Path(photo_url).name
 
-    old_path = os.path.join(
-        PROFILE_PHOTO_DIR,
-        filename
-    )
+    if filename in {"", ".", ".."}:
+        return
 
-    if os.path.isfile(old_path):
+    old_path = PROFILE_PHOTO_DIR / filename
 
-        try:
-            os.remove(old_path)
+    try:
 
-        except OSError:
-            pass
+        if old_path.is_file():
+            old_path.unlink()
+
+    except OSError:
+        logger.warning(
+            "Unable to remove old profile photo"
+        )
 
 
 # ==========================================
-# GET MY PROFILE
-# Employee/Admin can view own profile
+# HELPER: VALIDATE PROFILE PHOTO
 # ==========================================
 
-@router.get("/me")
-def get_my_profile(
-    current_user: dict = Depends(require_password_changed)
+def validate_photo_file(
+    filename,
+    content_type,
+    content
 ):
 
-    employee = None
+    extension = Path(filename or "").suffix.lower()
 
-    if current_user.get("role") == "employee":
+    if extension not in ALLOWED_EXTENSIONS:
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPG, JPEG and PNG images are allowed"
+        )
+
+    expected_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png"
+    }
+
+    if content_type != expected_types[extension]:
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image content type"
+        )
+
+    is_jpeg = content.startswith(b"\xff\xd8\xff")
+    is_png = content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    if not (
+        (extension in {".jpg", ".jpeg"} and is_jpeg)
+        or (extension == ".png" and is_png)
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image file"
+        )
+
+    return extension
+
+
+# ==========================================
+# HELPER: GET PROFILE TARGET
+# ==========================================
+
+def get_profile_target(current_user):
+
+    role = current_user.get("role")
+
+    if role == "admin":
+
+        return users, current_user["_id"], None
+
+    if role == "employee":
 
         employee = get_employee_record(current_user)
 
         if not employee:
 
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee profile not found"
             )
 
-    return serialize_profile(
-        current_user,
-        employee
+        return employees, employee["_id"], employee
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid account role"
     )
 
 
 # ==========================================
-# UPDATE MY PERSONAL PROFILE
-# Employee/Admin can update own details
+# GET MY PROFILE
+# Admin and Employee
 # ==========================================
 
-@router.patch("/me")
-def update_my_profile(
-    data: EmployeeProfileUpdate,
+@router.get("/me")
+def get_my_profile(
     current_user: dict = Depends(require_password_changed)
 ):
-
-    update_data = data.model_dump(
-        exclude_unset=True,
-        exclude_none=True,
-        mode="json"
-    )
-
-    if not update_data:
-
-        raise HTTPException(
-            status_code=400,
-            detail="No profile details provided"
-        )
 
     role = current_user.get("role")
 
@@ -255,16 +321,94 @@ def update_my_profile(
         if not employee:
 
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee profile not found"
             )
 
-    # Check duplicate email
-    new_email = update_data.get("email")
+    elif role != "admin":
 
-    if new_email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid account role"
+        )
 
-        new_email = str(new_email).lower().strip()
+    return serialize_profile(
+        current_user,
+        employee
+    )
+
+
+# ==========================================
+# UPDATE MY PERSONAL PROFILE
+# Admin and Employee
+# ==========================================
+
+@router.patch("/me")
+def update_my_profile(
+    data: EmployeeProfileUpdate,
+    current_user: dict = Depends(require_password_changed)
+):
+
+    role = current_user.get("role")
+
+    if role not in {"admin", "employee"}:
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid account role"
+        )
+
+    update_data = data.model_dump(
+        exclude_unset=True,
+        exclude_none=True,
+        mode="json"
+    )
+
+    if not update_data:
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No profile details provided"
+        )
+
+    employee = None
+
+    if role == "employee":
+
+        employee = get_employee_record(current_user)
+
+        if not employee:
+
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee profile not found"
+            )
+
+    # Validate dates against existing profile values.
+    dob = update_data.get(
+        "date_of_birth",
+        employee.get("date_of_birth")
+        if employee
+        else current_user.get("date_of_birth")
+    )
+
+    joining_date = (
+        employee.get("joining_date")
+        if employee
+        else current_user.get("joining_date")
+    )
+
+    validate_employment_dates(
+        dob,
+        joining_date
+    )
+
+    # Normalize and validate email.
+    if "email" in update_data:
+
+        new_email = str(
+            update_data["email"]
+        ).lower().strip()
 
         duplicate_user = users.find_one({
             "email": new_email,
@@ -279,92 +423,124 @@ def update_my_profile(
         if duplicate_user or duplicate_employee:
 
             raise HTTPException(
-                status_code=409,
+                status_code=status.HTTP_409_CONFLICT,
                 detail="Email address is already registered"
             )
 
         update_data["email"] = new_email
 
-    # Admin personal information
-    if role == "admin":
+    now = datetime.now(timezone.utc)
 
-        try:
+    try:
 
-            users.update_one(
-                {"_id": current_user["_id"]},
+        # ADMIN PROFILE UPDATE
+        if role == "admin":
+
+            result = users.update_one(
+                {
+                    "_id": current_user["_id"]
+                },
                 {
                     "$set": {
                         **update_data,
-                        "updated_at": datetime.now(timezone.utc)
+                        "updated_at": now
                     }
                 }
             )
 
-        except DuplicateKeyError:
+            if result.matched_count != 1:
 
-            raise HTTPException(
-                status_code=409,
-                detail="Email address is already registered"
-            )
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Admin account not found"
+                )
 
-    # Employee personal information
-    elif role == "employee":
+        # EMPLOYEE PROFILE UPDATE
+        else:
 
-        user_updates = {}
+            user_updates = {}
 
-        if "name" in update_data:
-            user_updates["name"] = update_data["name"]
+            if "name" in update_data:
+                user_updates["name"] = update_data["name"]
 
-        if "email" in update_data:
-            user_updates["email"] = update_data["email"]
+            if "email" in update_data:
+                user_updates["email"] = update_data["email"]
 
-        try:
-
-            with users.database.client.start_session() as session:
+            with client.start_session() as session:
 
                 with session.start_transaction():
 
-                    employees.update_one(
-                        {"_id": employee["_id"]},
+                    employee_result = employees.update_one(
+                        {
+                            "_id": employee["_id"]
+                        },
                         {
                             "$set": {
                                 **update_data,
-                                "updated_at": datetime.now(timezone.utc)
+                                "updated_at": now
                             }
                         },
                         session=session
                     )
 
+                    if employee_result.matched_count != 1:
+
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Employee profile not found"
+                        )
+
                     if user_updates:
 
-                        users.update_one(
-                            {"_id": current_user["_id"]},
+                        user_result = users.update_one(
+                            {
+                                "_id": current_user["_id"]
+                            },
                             {
                                 "$set": {
                                     **user_updates,
-                                    "updated_at": datetime.now(timezone.utc)
+                                    "updated_at": now
                                 }
                             },
                             session=session
                         )
 
-        except DuplicateKeyError:
+                        if user_result.matched_count != 1:
 
-            raise HTTPException(
-                status_code=409,
-                detail="Email address is already registered"
-            )
+                            raise HTTPException(
+                                status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Login account not found"
+                            )
 
-    else:
+    except DuplicateKeyError:
 
         raise HTTPException(
-            status_code=403,
-            detail="Invalid account role"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email address is already registered"
         )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        logger.exception("Profile update failed")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update profile"
+        ) from error
 
     updated_user = users.find_one({
         "_id": current_user["_id"]
     })
+
+    if not updated_user:
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Updated account not found"
+        )
 
     updated_employee = None
 
@@ -394,7 +570,7 @@ def update_admin_professional_profile(
     if current_user.get("role") != "admin":
 
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Admin can update this information"
         )
 
@@ -407,45 +583,57 @@ def update_admin_professional_profile(
     if not update_data:
 
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="No professional details provided"
         )
 
-    # Validate dates when both dates are available
-    date_of_birth = current_user.get("date_of_birth")
-    joining_date = update_data.get("joining_date")
+    dob = current_user.get("date_of_birth")
 
-    if joining_date and date_of_birth:
+    joining_date = update_data.get(
+        "joining_date",
+        current_user.get("joining_date")
+    )
 
-        if isinstance(date_of_birth, str):
-            date_of_birth = datetime.fromisoformat(
-                date_of_birth
-            ).date()
+    validate_employment_dates(
+        dob,
+        joining_date
+    )
 
-        if isinstance(date_of_birth, datetime):
-            date_of_birth = date_of_birth.date()
+    try:
 
-        if isinstance(joining_date, str):
-            joining_date = datetime.fromisoformat(
-                joining_date
-            ).date()
+        result = users.update_one(
+            {
+                "_id": current_user["_id"],
+                "role": "admin"
+            },
+            {
+                "$set": {
+                    **update_data,
+                    "updated_at": datetime.now(timezone.utc)
+                }
+            }
+        )
 
-        if joining_date < date_of_birth:
+        if result.matched_count != 1:
 
             raise HTTPException(
-                status_code=422,
-                detail="Joining date cannot be before date of birth"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Admin account not found"
             )
 
-    users.update_one(
-        {"_id": current_user["_id"]},
-        {
-            "$set": {
-                **update_data,
-                "updated_at": datetime.now(timezone.utc)
-            }
-        }
-    )
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        logger.exception(
+            "Admin professional profile update failed"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update professional information"
+        ) from error
 
     updated_user = users.find_one({
         "_id": current_user["_id"]
@@ -459,7 +647,7 @@ def update_admin_professional_profile(
 
 # ==========================================
 # UPLOAD PROFILE PHOTO
-# Employee/Admin can upload own photo
+# Admin and Employee
 # ==========================================
 
 @router.post("/me/profile-photo")
@@ -470,6 +658,13 @@ async def upload_profile_photo(
 
     role = current_user.get("role")
 
+    if role not in {"admin", "employee"}:
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid account role"
+        )
+
     employee = None
 
     if role == "employee":
@@ -479,136 +674,107 @@ async def upload_profile_photo(
         if not employee:
 
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee profile not found"
             )
-
-    extension = os.path.splitext(
-        file.filename or ""
-    )[1].lower()
-
-    if extension not in ALLOWED_EXTENSIONS:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Only JPG, JPEG and PNG images are allowed"
-        )
-
-    if file.content_type not in {
-        "image/jpeg",
-        "image/png"
-    }:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid image content type"
-        )
 
     photo_path = None
 
     try:
 
-        file_content = await file.read(
-            MAX_FILE_SIZE + 1
-        )
+        content = await file.read(MAX_FILE_SIZE + 1)
 
-        if not file_content:
+        if not content:
 
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Uploaded file is empty"
             )
 
-        if len(file_content) > MAX_FILE_SIZE:
+        if len(content) > MAX_FILE_SIZE:
 
             raise HTTPException(
-                status_code=413,
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="Profile photo must be 2 MB or smaller"
             )
 
-        is_jpeg = file_content.startswith(
-            b"\xff\xd8\xff"
+        extension = validate_photo_file(
+            file.filename,
+            file.content_type,
+            content
         )
 
-        is_png = file_content.startswith(
-            b"\x89PNG\r\n\x1a\n"
-        )
+        unique_filename = f"{uuid.uuid4().hex}{extension}"
 
-        if not (
-            (extension in {".jpg", ".jpeg"} and is_jpeg)
-            or (extension == ".png" and is_png)
-        ):
-
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid image file"
-            )
-
-        unique_filename = (
-            f"{uuid.uuid4().hex}{extension}"
-        )
-
-        photo_path = os.path.join(
-            PROFILE_PHOTO_DIR,
-            unique_filename
-        )
+        photo_path = PROFILE_PHOTO_DIR / unique_filename
 
         photo_url = (
             f"/uploads/profile_photos/{unique_filename}"
         )
 
-        with open(photo_path, "wb") as photo_file:
-            photo_file.write(file_content)
+        old_photo_url = get_photo_url(
+            current_user,
+            employee
+        )
 
-        if role == "admin":
+        # Save new photo.
+        with open(photo_path, "xb") as photo_file:
+            photo_file.write(content)
 
-            users.update_one(
-                {"_id": current_user["_id"]},
-                {
-                    "$set": {
-                        "profile_photo": photo_url,
-                        "updated_at": datetime.now(timezone.utc)
-                    }
+        target_collection, target_id, _ = get_profile_target(
+            current_user
+        )
+
+        update_result = target_collection.update_one(
+            {
+                "_id": target_id
+            },
+            {
+                "$set": {
+                    "profile_photo": photo_url,
+                    "updated_at": datetime.now(timezone.utc)
                 }
-            )
+            }
+        )
 
-        elif role == "employee":
-
-            employees.update_one(
-                {"_id": employee["_id"]},
-                {
-                    "$set": {
-                        "profile_photo": photo_url,
-                        "updated_at": datetime.now(timezone.utc)
-                    }
-                }
-            )
-
-        else:
+        if update_result.matched_count != 1:
 
             raise HTTPException(
-                status_code=403,
-                detail="Invalid account role"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Profile record not found"
             )
-
-        remove_old_photo(
-            get_photo_url(current_user, employee)
-        )
 
     except Exception:
 
-        if photo_path and os.path.exists(photo_path):
-            os.remove(photo_path)
+        # Remove newly created file if DB update fails.
+        if photo_path and photo_path.exists():
+
+            try:
+                photo_path.unlink()
+
+            except OSError:
+                logger.exception(
+                    "Unable to clean up failed photo upload"
+                )
 
         raise
 
     finally:
-
         await file.close()
+
+    # Delete old photo only after successful DB update.
+    remove_old_photo(old_photo_url)
 
     updated_user = users.find_one({
         "_id": current_user["_id"]
     })
+
+    if not updated_user:
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found after photo upload"
+        )
 
     updated_employee = None
 
@@ -626,7 +792,7 @@ async def upload_profile_photo(
 
 # ==========================================
 # REMOVE PROFILE PHOTO
-# Employee/Admin can remove own photo
+# Admin and Employee
 # ==========================================
 
 @router.delete("/me/profile-photo")
@@ -635,6 +801,13 @@ def delete_profile_photo(
 ):
 
     role = current_user.get("role")
+
+    if role not in {"admin", "employee"}:
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid account role"
+        )
 
     employee = None
 
@@ -645,7 +818,7 @@ def delete_profile_photo(
         if not employee:
 
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee profile not found"
             )
 
@@ -657,14 +830,20 @@ def delete_profile_photo(
     if not old_photo_url:
 
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="No profile photo found"
         )
 
-    if role == "admin":
+    target_collection, target_id, _ = get_profile_target(
+        current_user
+    )
 
-        users.update_one(
-            {"_id": current_user["_id"]},
+    try:
+
+        update_result = target_collection.update_one(
+            {
+                "_id": target_id
+            },
             {
                 "$set": {
                     "profile_photo": None,
@@ -673,18 +852,28 @@ def delete_profile_photo(
             }
         )
 
-    elif role == "employee":
+        if update_result.matched_count != 1:
 
-        employees.update_one(
-            {"_id": employee["_id"]},
-            {
-                "$set": {
-                    "profile_photo": None,
-                    "updated_at": datetime.now(timezone.utc)
-                }
-            }
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Profile record not found"
+            )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        logger.exception(
+            "Profile photo removal failed"
         )
 
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to remove profile photo"
+        ) from error
+
+    # Remove file after successful database update.
     remove_old_photo(old_photo_url)
 
     return {

@@ -1,6 +1,17 @@
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  Link,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+
 import {
   Users,
   UserCheck,
@@ -18,13 +29,14 @@ import {
   FileText,
 } from "lucide-react";
 
+import API from "./api";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import "./Employees.css";
 
-const API_URL = "http://127.0.0.1:8000";
-
 // Build employee profile photo URL
+const API_URL = API.defaults.baseURL;
+
 function getPhotoUrl(photo) {
   if (!photo || typeof photo !== "string") return "";
 
@@ -61,7 +73,10 @@ function EmployeeAvatar({ name, photo }) {
 
   if (!photoUrl || imageBroken) {
     return (
-      <div className="employee-table-avatar" aria-label={name || "Employee"}>
+      <div
+        className="employee-table-avatar"
+        aria-label={name || "Employee"}
+      >
         {getInitials(name)}
       </div>
     );
@@ -80,10 +95,17 @@ function EmployeeAvatar({ name, photo }) {
 function Employees() {
   const navigate = useNavigate();
 
+  // Read search query from Header URL
+  const [searchParams] = useSearchParams();
+
+  const urlSearch = searchParams.get("search") || "";
+
   const [employees, setEmployees] = useState([]);
   const [pendingCount, setPendingCount] = useState(null);
-  const [search, setSearch] = useState("");
+
+  const [search, setSearch] = useState(urlSearch);
   const [statusFilter, setStatusFilter] = useState("All");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
@@ -91,9 +113,16 @@ function Employees() {
 
   const token = localStorage.getItem("access_token");
 
+  // Synchronize Header search with Employees search
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
+
+  // Handle expired session
   const handleUnauthorized = useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user");
+
     navigate("/login", { replace: true });
   }, [navigate]);
 
@@ -108,34 +137,32 @@ function Employees() {
       setLoading(true);
       setError("");
 
-      const response = await fetch(`${API_URL}/employees/`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      });
+      const response = await API.get("/employees/");
 
-      const data = await response.json().catch(() => []);
+      setEmployees(
+        Array.isArray(response.data) ? response.data : []
+      );
+    } catch (err) {
+      const status = err.response?.status;
+      const message = err.response?.data?.detail;
 
-      if (response.status === 401 || response.status === 403) {
+      if (status === 401) {
         handleUnauthorized();
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Unable to load employee records."
+      if (status === 403) {
+        setError(
+          message ||
+            "You do not have permission to view employees."
         );
+        return;
       }
 
-      setEmployees(Array.isArray(data) ? data : []);
-    } catch (err) {
       setError(
-        err.message === "Failed to fetch"
+        err.code === "ERR_NETWORK"
           ? "Unable to connect to the backend server."
-          : err.message
+          : message || "Unable to load employee records."
       );
     } finally {
       setLoading(false);
@@ -147,26 +174,29 @@ function Employees() {
     if (!token) return;
 
     try {
-      const response = await fetch(`${API_URL}/admin/pending-users`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await API.get("/admin/pending-users");
 
-      if (response.status === 401 || response.status === 403) {
+      const data = response.data;
+
+      setPendingCount(
+        Array.isArray(data) ? data.length : null
+      );
+    } catch (err) {
+      const status = err.response?.status;
+
+      if (status === 401) {
         handleUnauthorized();
         return;
       }
 
-      if (response.ok) {
-        const data = await response.json();
-        setPendingCount(Array.isArray(data) ? data.length : null);
-      }
-    } catch (err) {
-      console.error("Unable to load pending approvals:", err);
+      console.error(
+        "Unable to load pending approvals:",
+        err.response?.data?.detail || err.message
+      );
     }
   }, [token, handleUnauthorized]);
 
+  // Initial data loading
   useEffect(() => {
     fetchEmployees();
     fetchPendingCount();
@@ -174,11 +204,13 @@ function Employees() {
 
   // Employee summary calculations
   const activeCount = employees.filter(
-    (employee) => employee.employment_status === "Active"
+    (employee) =>
+      employee.employment_status === "Active"
   ).length;
 
   const inactiveCount = employees.filter(
-    (employee) => employee.employment_status === "Inactive"
+    (employee) =>
+      employee.employment_status === "Inactive"
   ).length;
 
   const departmentsCount = new Set(
@@ -199,7 +231,9 @@ function Employees() {
         employee.department,
         employee.designation,
       ].some((value) =>
-        String(value || "").toLowerCase().includes(query)
+        String(value || "")
+          .toLowerCase()
+          .includes(query)
       );
 
       const matchesStatus =
@@ -213,7 +247,9 @@ function Employees() {
   // Activate or deactivate an employee
   const handleStatusChange = async (employee) => {
     const employeeId = employee.id;
-    const isActive = employee.employment_status === "Active";
+
+    const isActive =
+      employee.employment_status === "Active";
 
     if (!employeeId) {
       setError("Employee record ID is missing.");
@@ -234,30 +270,9 @@ function Employees() {
       setError("");
       setNotice("");
 
-      const response = await fetch(
-        `${API_URL}/employees/${employeeId}/${action}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      await API.patch(
+        `/employees/${employeeId}/${action}`
       );
-
-      const result = await response.json().catch(() => ({}));
-
-      if (response.status === 401 || response.status === 403) {
-        handleUnauthorized();
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          typeof result.detail === "string"
-            ? result.detail
-            : `Unable to ${action} employee.`
-        );
-      }
 
       setEmployees((previous) =>
         previous.map((item) =>
@@ -271,12 +286,31 @@ function Employees() {
         `${employee.name} has been ${action}d successfully.`
       );
     } catch (err) {
-      setError(err.message || "Status update failed.");
+      const status = err.response?.status;
+      const message = err.response?.data?.detail;
+
+      if (status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      if (status === 403) {
+        setError(
+          message ||
+            "You do not have permission to update this employee."
+        );
+        return;
+      }
+
+      setError(
+        message || `Unable to ${action} employee.`
+      );
     } finally {
       setActionLoading(null);
     }
   };
 
+  // Summary cards
   const summaryCards = [
     {
       title: "Total Employees",
@@ -316,6 +350,7 @@ function Employees() {
         <Header />
 
         <div className="employees-content">
+
           {/* Page heading */}
           <section className="employees-page-heading">
             <div>
@@ -330,21 +365,31 @@ function Employees() {
               </p>
             </div>
 
-            <Link to="/employees/add" className="add-employee-btn">
+            <Link
+              to="/employees/add"
+              className="add-employee-btn"
+            >
               <Plus size={18} />
               <span>Add Employee</span>
             </Link>
           </section>
 
-          {/* Error and success messages */}
+          {/* Error message */}
           {error && (
-            <div className="employees-alert employees-error" role="alert">
+            <div
+              className="employees-alert employees-error"
+              role="alert"
+            >
               {error}
             </div>
           )}
 
+          {/* Success message */}
           {notice && (
-            <div className="employees-alert employees-notice" role="status">
+            <div
+              className="employees-alert employees-notice"
+              role="status"
+            >
               {notice}
             </div>
           )}
@@ -362,12 +407,16 @@ function Employees() {
                   <div className="employee-summary-top">
                     <span>{card.title}</span>
 
-                    <div className={`summary-icon ${card.className}`}>
+                    <div
+                      className={`summary-icon ${card.className}`}
+                    >
                       <Icon size={20} strokeWidth={1.8} />
                     </div>
                   </div>
 
-                  <h2>{loading ? "..." : card.value}</h2>
+                  <h2>
+                    {loading ? "..." : card.value}
+                  </h2>
 
                   <small>{card.subtitle}</small>
                 </article>
@@ -377,6 +426,7 @@ function Employees() {
 
           {/* Employee records */}
           <section className="employees-table-section">
+
             <div className="employees-table-heading">
               <div>
                 <span className="employees-section-label">
@@ -393,6 +443,8 @@ function Employees() {
               </div>
 
               <div className="employees-controls">
+
+                {/* Employee search */}
                 <div className="employee-search-box">
                   <Search size={17} />
 
@@ -400,25 +452,33 @@ function Employees() {
                     type="search"
                     placeholder="Search employees..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) =>
+                      setSearch(e.target.value)
+                    }
                     aria-label="Search employees"
                   />
                 </div>
 
+                {/* Status filter */}
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value)
+                  }
                   aria-label="Filter by employment status"
                 >
                   <option value="All">All Status</option>
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+
               </div>
             </div>
 
+            {/* Employee table */}
             <div className="employees-table-wrapper">
               <table className="employees-table">
+
                 <thead>
                   <tr>
                     <th>Employee</th>
@@ -433,7 +493,10 @@ function Employees() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="6" className="employees-empty-cell">
+                      <td
+                        colSpan="6"
+                        className="employees-empty-cell"
+                      >
                         <div className="employees-loading">
                           <span className="employees-loader" />
                           Loading employee records...
@@ -442,8 +505,12 @@ function Employees() {
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="employees-empty-cell">
+                      <td
+                        colSpan="6"
+                        className="employees-empty-cell"
+                      >
                         <div className="employees-empty">
+
                           <div className="employees-empty-icon">
                             <BriefcaseBusiness size={27} />
                           </div>
@@ -455,39 +522,49 @@ function Employees() {
                               ? "Try changing your search or status filter."
                               : "Employee records will appear here when available."}
                           </p>
+
                         </div>
                       </td>
                     </tr>
                   ) : (
                     filteredEmployees.map((employee) => {
                       const employeeId = employee.id;
+
                       const isActive =
                         employee.employment_status === "Active";
 
                       return (
                         <tr key={employeeId}>
+
+                          {/* Employee details */}
                           <td>
                             <div className="employee-name-cell">
+
                               <EmployeeAvatar
                                 name={employee.name}
                                 photo={employee.profile_photo}
                               />
 
                               <div className="employee-name-info">
-                                <strong>{employee.name || "—"}</strong>
+                                <strong>
+                                  {employee.name || "—"}
+                                </strong>
 
                                 <small>
                                   <Mail size={12} />
                                   {employee.email || "—"}
                                 </small>
                               </div>
+
                             </div>
                           </td>
 
+                          {/* Employee ID */}
                           <td className="employee-id-cell">
                             {employee.employee_id || "—"}
                           </td>
 
+                          {/* Department */}
                           <td>
                             <span className="employee-detail-cell">
                               <Building2 size={14} />
@@ -495,8 +572,12 @@ function Employees() {
                             </span>
                           </td>
 
-                          <td>{employee.designation || "—"}</td>
+                          {/* Designation */}
+                          <td>
+                            {employee.designation || "—"}
+                          </td>
 
+                          {/* Employment status */}
                           <td>
                             <span
                               className={`employee-status ${
@@ -510,8 +591,11 @@ function Employees() {
                             </span>
                           </td>
 
+                          {/* Actions */}
                           <td>
                             <div className="employee-actions">
+
+                              {/* View */}
                               <button
                                 type="button"
                                 className="view-action"
@@ -524,18 +608,22 @@ function Employees() {
                                 <Eye size={16} />
                               </button>
 
+                              {/* Edit */}
                               <button
                                 type="button"
                                 className="edit-action"
                                 title="Edit employee"
                                 onClick={() =>
-                                  navigate(`/employees/edit/${employeeId}`)
+                                  navigate(
+                                    `/employees/edit/${employeeId}`
+                                  )
                                 }
                                 disabled={!employeeId}
                               >
                                 <Pencil size={16} />
                               </button>
 
+                              {/* Documents and OCR */}
                               <button
                                 type="button"
                                 className="documents-action"
@@ -550,6 +638,7 @@ function Employees() {
                                 <FileText size={16} />
                               </button>
 
+                              {/* Activate / Deactivate */}
                               <button
                                 type="button"
                                 className={
@@ -557,8 +646,14 @@ function Employees() {
                                     ? "deactivate-action"
                                     : "activate-action"
                                 }
-                                title={isActive ? "Deactivate" : "Activate"}
-                                onClick={() => handleStatusChange(employee)}
+                                title={
+                                  isActive
+                                    ? "Deactivate"
+                                    : "Activate"
+                                }
+                                onClick={() =>
+                                  handleStatusChange(employee)
+                                }
                                 disabled={
                                   !employeeId ||
                                   actionLoading === employeeId
@@ -573,20 +668,24 @@ function Employees() {
                                   <Power size={16} />
                                 )}
                               </button>
+
                             </div>
                           </td>
+
                         </tr>
                       );
                     })
                   )}
                 </tbody>
+
               </table>
             </div>
 
             {/* Table footer */}
             <div className="employees-table-footer">
               <span>
-                Showing {filteredEmployees.length} of {employees.length} employees
+                Showing {filteredEmployees.length} of{" "}
+                {employees.length} employees
               </span>
 
               <button
@@ -602,12 +701,15 @@ function Employees() {
                 Refresh
               </button>
             </div>
+
           </section>
 
+          {/* Page footer */}
           <div className="employees-page-footer">
             <span>OMNIX EMS</span>
             <span>Employee Management</span>
           </div>
+
         </div>
       </main>
     </div>

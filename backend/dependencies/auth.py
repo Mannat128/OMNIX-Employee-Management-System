@@ -15,7 +15,10 @@ from core.security import JWT_SECRET, JWT_ALGORITHM
 security = HTTPBearer(auto_error=False)
 
 
+# ==========================================
 # GET CURRENT LOGGED-IN USER
+# ==========================================
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
@@ -31,12 +34,15 @@ def get_current_user(
         payload = jwt.decode(
             token,
             JWT_SECRET,
-            algorithms=[JWT_ALGORITHM]
+            algorithms=[JWT_ALGORITHM],
+            options={
+                "require": ["exp", "iat", "sub"]
+            }
         )
 
         user_id = payload.get("sub")
 
-        if not user_id or not ObjectId.is_valid(user_id):
+        if not isinstance(user_id, str) or not ObjectId.is_valid(user_id):
             raise HTTPException(
                 status_code=401,
                 detail="Invalid authentication token"
@@ -52,32 +58,44 @@ def get_current_user(
                 detail="User account not found"
             )
 
-        # Check session version
-        token_version = payload.get("session_version", 0)
+        # SESSION VERSION VALIDATION
+        token_version = payload.get("session_version")
         current_version = user.get("session_version", 0)
 
-        if token_version != current_version:
+        if (
+            type(token_version) is not int
+            or type(current_version) is not int
+            or token_version != current_version
+        ):
             raise HTTPException(
                 status_code=401,
                 detail="Session expired. Please login again."
             )
 
-        # Validate role
-        if user.get("role") not in ["admin", "employee"]:
+        # ROLE VALIDATION
+        role = user.get("role")
+
+        if role not in ["admin", "employee"]:
             raise HTTPException(
                 status_code=403,
                 detail="Invalid user role"
             )
 
-        # Employee-specific checks
-        if user.get("role") == "employee":
+        if payload.get("role") != role:
+            raise HTTPException(
+                status_code=401,
+                detail="User role changed. Please login again."
+            )
 
-            if user.get("status") != "approved":
-                raise HTTPException(
-                    status_code=403,
-                    detail="Your account is not approved"
-                )
+        # ACCOUNT STATUS VALIDATION
+        if user.get("status") != "approved":
+            raise HTTPException(
+                status_code=403,
+                detail="Your account is not approved or is inactive."
+            )
 
+        # EMPLOYEE VALIDATION
+        if role == "employee":
             employee = employees.find_one({
                 "user_id": str(user["_id"])
             })
@@ -91,7 +109,7 @@ def get_current_user(
             if employee.get("employment_status") != "Active":
                 raise HTTPException(
                     status_code=403,
-                    detail="Your employee account is inactive"
+                    detail="Your employee account is inactive."
                 )
 
         return user
@@ -106,7 +124,10 @@ def get_current_user(
         )
 
 
-# REQUIRE EMPLOYEE TO CHANGE TEMPORARY PASSWORD
+# ==========================================
+# REQUIRE PASSWORD CHANGE
+# ==========================================
+
 def require_password_changed(
     current_user: dict = Depends(get_current_user)
 ):
@@ -122,7 +143,10 @@ def require_password_changed(
     return current_user
 
 
+# ==========================================
 # ADMIN-ONLY ACCESS
+# ==========================================
+
 def require_admin(
     current_user: dict = Depends(require_password_changed)
 ):
