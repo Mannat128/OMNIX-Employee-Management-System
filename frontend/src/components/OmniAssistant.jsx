@@ -1,5 +1,4 @@
-
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   X,
@@ -19,6 +18,62 @@ import {
 import API from "../api";
 import "./OmniAssistant.css";
 
+// Convert FastAPI/Axios errors into a plain string.
+// Never pass FastAPI's detail array/object directly into JSX.
+const getApiErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail;
+  const status = error?.response?.status;
+
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => {
+      if (typeof item === "string") return item;
+
+      const location = Array.isArray(item?.loc)
+        ? item.loc.filter((part) => part !== "body").join(".")
+        : "";
+
+      const message =
+        item?.msg || item?.message || "Invalid value";
+
+      return location ? `${location}: ${message}` : String(message);
+    });
+
+    return messages.join(" | ") || fallback;
+  }
+
+  if (typeof detail === "string") return detail;
+
+  if (detail && typeof detail === "object") {
+    if (typeof detail.message === "string") return detail.message;
+    if (typeof detail.msg === "string") return detail.msg;
+  }
+
+  if (status === 401) {
+    return "Your session has expired. Please log out and sign in again.";
+  }
+
+  if (status === 403) {
+    return "You do not have permission to perform this action.";
+  }
+
+  if (typeof error?.message === "string" && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+const readStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+};
+
+const ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 function OmniAssistant() {
   const navigate = useNavigate();
 
@@ -35,19 +90,20 @@ function OmniAssistant() {
   const [ticketSuccess, setTicketSuccess] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
 
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const user = readStoredUser();
   const role = user.role || "employee";
-  const isAdmin = role.toLowerCase() === "admin";
+  const isAdmin = String(role).toLowerCase() === "admin";
 
+  // The backend assigns Medium priority automatically.
+  // Do not send a priority field in the ticket-create request.
   const [ticketForm, setTicketForm] = useState({
     subject: "",
     category: "Technical",
-    priority: "Medium",
     description: "",
   });
 
-  const handleSend = (e) => {
-    e.preventDefault();
+  const handleSend = (event) => {
+    event.preventDefault();
 
     const text = message.trim();
     if (!text) return;
@@ -64,6 +120,18 @@ function OmniAssistant() {
     setMessage("");
   };
 
+  const resetTicketForm = () => {
+    setTicketForm({
+      subject: "",
+      category: "Technical",
+      description: "",
+    });
+    setSelectedFile(null);
+
+    const fileInput = document.getElementById("omni-ticket-attachment");
+    if (fileInput) fileInput.value = "";
+  };
+
   const openMyTickets = async () => {
     setActiveView("tickets");
     setTicketError("");
@@ -72,39 +140,53 @@ function OmniAssistant() {
 
     try {
       const response = await API.get("/tickets/");
-      setTickets(Array.isArray(response.data) ? response.data : []);
-    } catch (err) {
+      const data = response?.data;
+
+      setTickets(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(
+        "OMNI fetch tickets error:",
+        error?.response?.data || error
+      );
+
       setTicketError(
-        err.response?.data?.detail || "Unable to load your tickets."
+        getApiErrorMessage(error, "Unable to load your tickets.")
       );
     } finally {
       setTicketsLoading(false);
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
 
     if (!file) {
       setSelectedFile(null);
       return;
     }
 
-    const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png"];
-    const extension = file.name
-      .substring(file.name.lastIndexOf("."))
-      .toLowerCase();
+    const fileName = file.name.toLowerCase();
+    const hasAllowedExtension = ALLOWED_EXTENSIONS.some((extension) =>
+      fileName.endsWith(extension)
+    );
 
-    if (!allowedExtensions.includes(extension)) {
+    if (!hasAllowedExtension) {
       setTicketError("Only PDF, JPG, JPEG and PNG files are allowed.");
-      e.target.value = "";
+      event.target.value = "";
       setSelectedFile(null);
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size === 0) {
+      setTicketError("The selected file is empty.");
+      event.target.value = "";
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
       setTicketError("Maximum attachment size is 10 MB.");
-      e.target.value = "";
+      event.target.value = "";
       setSelectedFile(null);
       return;
     }
@@ -113,74 +195,103 @@ function OmniAssistant() {
     setSelectedFile(file);
   };
 
-  const handleCreateTicket = async (e) => {
-    e.preventDefault();
+  const handleCreateTicket = async (event) => {
+    event.preventDefault();
+
+    if (submitting) return;
+
+    const subject = ticketForm.subject.trim();
+    const description = ticketForm.description.trim();
+    const fileToUpload = selectedFile;
+
+    if (!subject || !description) {
+      setTicketError("Please enter both subject and description.");
+      return;
+    }
 
     try {
       setSubmitting(true);
       setTicketError("");
       setTicketSuccess("");
 
-      // Create ticket first
-      const response = await API.post("/tickets/", {
-        subject: ticketForm.subject.trim(),
+      // Keep this payload identical to the working Create Ticket form.
+      // TicketCreate accepts subject, category and description only.
+      // The backend sets priority to Medium automatically.
+      const payload = {
+        subject,
         category: ticketForm.category,
-        priority: ticketForm.priority,
-        description: ticketForm.description.trim(),
-      });
+        description,
+      };
 
-      const createdTicket = response.data?.ticket || response.data;
-      const ticketId = createdTicket?.id || createdTicket?._id;
+      console.log("OMNI submitting ticket payload:", payload);
 
-      // Upload attachment if selected
-      if (selectedFile) {
+      const response = await API.post("/tickets/", payload);
+
+      const responseData = response?.data || {};
+      const createdTicket =
+        responseData.ticket ||
+        responseData.data?.ticket ||
+        responseData;
+
+      const ticketId =
+        createdTicket?.id ||
+        createdTicket?._id ||
+        createdTicket?.ticket_id ||
+        responseData.ticket_id;
+
+      let successMessage = "Your support ticket has been created successfully.";
+
+      // Upload the optional attachment only after the ticket is created.
+      if (fileToUpload) {
         if (!ticketId) {
-          setTicketError(
-            "Ticket was created, but its ID was not returned. Attachment could not be uploaded."
-          );
-          setTicketSuccess("Ticket created successfully.");
-          return;
-        }
+          successMessage =
+            "Your ticket was created successfully, but the server did not return its ID, so the attachment could not be uploaded.";
+        } else {
+          try {
+            const formData = new FormData();
+            formData.append("file", fileToUpload);
 
-        const formData = new FormData();
-        formData.append("file", selectedFile);
+            await API.post(
+              `/tickets/${ticketId}/attachments`,
+              formData,
+              {
+                headers: {
+                  "Content-Type": "multipart/form-data",
+                },
+              }
+            );
 
-        try {
-          await API.post(
-            `/tickets/${ticketId}/attachments`,
-            formData,
-            {
-              headers: {
-                "Content-Type": "multipart/form-data",
-              },
-            }
-          );
-        } catch (uploadError) {
-          setTicketSuccess("Ticket created successfully.");
-          setTicketError(
-            `Attachment upload failed: ${
-              uploadError.response?.data?.detail ||
-              "Please try again from the ticket details page."
-            }`
-          );
-          return;
+            successMessage =
+              "Your support ticket and attachment have been submitted successfully.";
+          } catch (uploadError) {
+            console.error(
+              "OMNI attachment upload error:",
+              uploadError?.response?.data || uploadError
+            );
+
+            const uploadMessage = getApiErrorMessage(
+              uploadError,
+              "Please try uploading it from the ticket details page."
+            );
+
+            successMessage =
+              `Your ticket was created successfully, but the attachment could not be uploaded. ${uploadMessage}`;
+          }
         }
       }
 
-      setTicketForm({
-        subject: "",
-        category: "Technical",
-        priority: "Medium",
-        description: "",
-      });
-
-      setSelectedFile(null);
-      setTicketSuccess("Your support ticket has been created successfully.");
+      resetTicketForm();
+      setTicketSuccess(successMessage);
+      setTicketError("");
       setActiveView("success");
+    } catch (error) {
+      console.error(
+        "OMNI create ticket error:",
+        error?.response?.data || error
+      );
 
-    } catch (err) {
       setTicketError(
-        err.response?.data?.detail || "Unable to create your ticket."
+        getApiErrorMessage(error, "Unable to create your ticket.")
       );
     } finally {
       setSubmitting(false);
@@ -219,7 +330,6 @@ function OmniAssistant() {
 
   return (
     <div className="omni-assistant">
-
       {/* Floating Robot Launcher */}
       {!isOpen && (
         <button
@@ -236,7 +346,6 @@ function OmniAssistant() {
       {/* Chat Panel */}
       {isOpen && (
         <section className="omni-chat-panel">
-
           {/* Header */}
           <div className="omni-chat-header">
             <div className="omni-chat-brand">
@@ -274,7 +383,6 @@ function OmniAssistant() {
 
           {/* Chat Body */}
           <div className="omni-chat-body">
-
             {/* Home View */}
             {activeView === "home" && (
               <>
@@ -363,10 +471,12 @@ function OmniAssistant() {
                 </button>
 
                 <h3>Raise a Support Ticket</h3>
-                <p>Describe your issue and our Admin team will assist you.</p>
+                <p>
+                  Describe your issue and our Admin team will assist you.
+                </p>
 
                 {ticketError && (
-                  <div className="omni-ticket-error">
+                  <div className="omni-ticket-error" role="alert">
                     {ticketError}
                   </div>
                 )}
@@ -375,80 +485,88 @@ function OmniAssistant() {
                   className="omni-ticket-form"
                   onSubmit={handleCreateTicket}
                 >
-                  <label>Subject</label>
+                  <label htmlFor="omni-ticket-subject">Subject</label>
                   <input
+                    id="omni-ticket-subject"
                     value={ticketForm.subject}
-                    onChange={(e) =>
-                      setTicketForm({
-                        ...ticketForm,
-                        subject: e.target.value,
-                      })
+                    onChange={(event) =>
+                      setTicketForm((previous) => ({
+                        ...previous,
+                        subject: event.target.value,
+                      }))
                     }
                     placeholder="Enter ticket subject"
                     maxLength={150}
                     required
+                    disabled={submitting}
                   />
 
                   <div className="omni-ticket-grid">
                     <div>
-                      <label>Category</label>
+                      <label htmlFor="omni-ticket-category">Category</label>
                       <select
+                        id="omni-ticket-category"
                         value={ticketForm.category}
-                        onChange={(e) =>
-                          setTicketForm({
-                            ...ticketForm,
-                            category: e.target.value,
-                          })
+                        onChange={(event) =>
+                          setTicketForm((previous) => ({
+                            ...previous,
+                            category: event.target.value,
+                          }))
                         }
+                        disabled={submitting}
                       >
-                        {["Technical", "Documents", "Profile", "Account", "Other"].map(
-                          (item) => (
-                            <option key={item}>{item}</option>
-                          )
-                        )}
+                        {[
+                          "Technical",
+                          "Documents",
+                          "Profile",
+                          "Account",
+                          "Other",
+                        ].map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
                     <div>
-                      <label>Priority</label>
-                      <select
-                        value={ticketForm.priority}
-                        onChange={(e) =>
-                          setTicketForm({
-                            ...ticketForm,
-                            priority: e.target.value,
-                          })
-                        }
-                      >
-                        {["Low", "Medium", "High", "Urgent"].map(
-                          (item) => (
-                            <option key={item}>{item}</option>
-                          )
-                        )}
-                      </select>
+                      <label htmlFor="omni-ticket-priority">
+                        Priority
+                      </label>
+                      <input
+                        id="omni-ticket-priority"
+                        value="Medium (automatic)"
+                        readOnly
+                        aria-readonly="true"
+                      />
                     </div>
                   </div>
 
-                  <label>Description</label>
+                  <label htmlFor="omni-ticket-description">
+                    Description
+                  </label>
                   <textarea
+                    id="omni-ticket-description"
                     rows={4}
                     value={ticketForm.description}
-                    onChange={(e) =>
-                      setTicketForm({
-                        ...ticketForm,
-                        description: e.target.value,
-                      })
+                    onChange={(event) =>
+                      setTicketForm((previous) => ({
+                        ...previous,
+                        description: event.target.value,
+                      }))
                     }
                     placeholder="Describe your issue..."
                     maxLength={5000}
                     required
+                    disabled={submitting}
                   />
 
-                  <label className="omni-file-label">
+                  <label className="omni-file-label" htmlFor="omni-ticket-attachment">
                     <Paperclip size={16} /> Attachment (Optional)
                   </label>
 
                   <input
+                    id="omni-ticket-attachment"
                     className="omni-file-input"
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
@@ -462,7 +580,13 @@ function OmniAssistant() {
                       <span>{selectedFile.name}</span>
                       <button
                         type="button"
-                        onClick={() => setSelectedFile(null)}
+                        onClick={() => {
+                          setSelectedFile(null);
+                          const fileInput = document.getElementById(
+                            "omni-ticket-attachment"
+                          );
+                          if (fileInput) fileInput.value = "";
+                        }}
                         disabled={submitting}
                         aria-label="Remove file"
                       >
@@ -482,7 +606,10 @@ function OmniAssistant() {
                   >
                     {submitting ? (
                       <>
-                        <LoaderCircle size={17} className="omni-loading-icon" />
+                        <LoaderCircle
+                          size={17}
+                          className="omni-loading-icon"
+                        />
                         Submitting...
                       </>
                     ) : (
@@ -510,14 +637,17 @@ function OmniAssistant() {
                 <p>Track the status of your support requests.</p>
 
                 {ticketError && (
-                  <div className="omni-ticket-error">
+                  <div className="omni-ticket-error" role="alert">
                     {ticketError}
                   </div>
                 )}
 
                 {ticketsLoading ? (
                   <div className="omni-ticket-empty">
-                    <LoaderCircle className="omni-loading-icon" size={24} />
+                    <LoaderCircle
+                      className="omni-loading-icon"
+                      size={24}
+                    />
                     Loading your tickets...
                   </div>
                 ) : tickets.length === 0 ? (
@@ -534,27 +664,40 @@ function OmniAssistant() {
                   </div>
                 ) : (
                   <div className="omni-ticket-list">
-                    {tickets.map((ticket) => (
+                    {tickets.map((ticket, index) => (
                       <button
                         type="button"
                         className="omni-ticket-item"
-                        key={ticket.id || ticket._id || ticket.ticket_number}
+                        key={
+                          ticket.id ||
+                          ticket._id ||
+                          ticket.ticket_number ||
+                          index
+                        }
                         onClick={() => openTicketDetails(ticket)}
                       >
                         <div className="omni-ticket-item-top">
                           <strong>
                             {ticket.ticket_number || "Support Ticket"}
                           </strong>
-                          <span className={`omni-ticket-status ${ticket.status?.toLowerCase().replaceAll(" ", "-")}`}>
+                          <span
+                            className={`omni-ticket-status ${
+                              ticket.status
+                                ?.toLowerCase()
+                                .replaceAll(" ", "-") || ""
+                            }`}
+                          >
                             {ticket.status || "Open"}
                           </span>
                         </div>
 
-                        <h4>{ticket.subject}</h4>
+                        <h4>{ticket.subject || "Untitled ticket"}</h4>
 
                         <div className="omni-ticket-meta">
                           <span>{ticket.category || "General"}</span>
-                          <span>{ticket.priority || "Medium"} Priority</span>
+                          <span>
+                            {ticket.priority || "Medium"} Priority
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -603,7 +746,6 @@ function OmniAssistant() {
                 ))}
               </div>
             )}
-
           </div>
 
           {/* Chat Input: Home View Only */}
@@ -616,7 +758,7 @@ function OmniAssistant() {
                 type="text"
                 placeholder="Message OMNI..."
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={(event) => setMessage(event.target.value)}
                 aria-label="Message OMNI"
               />
 
@@ -632,9 +774,8 @@ function OmniAssistant() {
 
           <div className="omni-chat-footer">
             <MessageCircle size={12} />
-            OMNIX EMS · {role.toUpperCase()} WORKSPACE
+            OMNIX EMS · {String(role).toUpperCase()} WORKSPACE
           </div>
-
         </section>
       )}
     </div>

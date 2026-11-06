@@ -1,5 +1,4 @@
-
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -13,6 +12,7 @@ import {
   X,
   Paperclip,
   FileText,
+  CheckCircle,
 } from "lucide-react";
 
 import API from "./api";
@@ -20,147 +20,220 @@ import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import "./Tickets.css";
 
+// Safely turn FastAPI/Axios errors into text.
+// This prevents validation objects from being rendered directly by React.
+const getApiErrorMessage = (err, fallback = "Something went wrong.") => {
+  const detail = err?.response?.data?.detail;
+
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => {
+      if (typeof item === "string") return item;
+
+      const location = Array.isArray(item?.loc)
+        ? item.loc.filter((part) => part !== "body").join(".")
+        : "";
+
+      const message =
+        item?.msg || item?.message || item?.type || "Invalid value";
+
+      return location ? `${location}: ${message}` : String(message);
+    });
+
+    return messages.join(" | ") || fallback;
+  }
+
+  if (typeof detail === "string") return detail;
+
+  if (detail && typeof detail === "object") {
+    if (typeof detail.msg === "string") return detail.msg;
+    if (typeof detail.message === "string") return detail.message;
+
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (typeof err?.message === "string" && err.message) {
+    return err.message;
+  }
+
+  return fallback;
+};
+
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
+
+const safeReadUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+};
+
 function Tickets() {
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const user = safeReadUser();
   const isAdmin = user.role?.toLowerCase() === "admin";
 
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-
-  const fileInputRef = useRef(null);
+  const [fileError, setFileError] = useState("");
 
   const [form, setForm] = useState({
     subject: "",
     category: "Technical",
-    priority: "Medium",
     description: "",
   });
 
-  const fetchTickets = async () => {
+  // Fetch tickets without changing the current route.
+  const fetchTickets = async ({ showLoader = true } = {}) => {
     try {
-      setLoading(true);
-      setError("");
+      if (showLoader) setLoading(true);
 
       const response = await API.get("/tickets/");
-      setTickets(Array.isArray(response.data) ? response.data : []);
+      const responseData = response?.data;
+
+      setTickets(Array.isArray(responseData) ? responseData : []);
+      setError("");
     } catch (err) {
+      console.error("Fetch tickets error:", err?.response?.data || err);
       setError(
-        err.response?.data?.detail || "Unable to load tickets."
+        getApiErrorMessage(err, "Unable to load tickets. Please try again.")
       );
+      // Keep the existing page and any already loaded tickets visible.
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const resetForm = () => {
-    setForm({
-      subject: "",
-      category: "Technical",
-      priority: "Medium",
-      description: "",
-    });
-
-    setSelectedFile(null);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const closeForm = () => {
-    if (submitting) return;
-
-    setShowForm(false);
-    resetForm();
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setFileError("");
 
     if (!file) {
       setSelectedFile(null);
       return;
     }
 
-    const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png"];
-    const extension = file.name
-      .substring(file.name.lastIndexOf("."))
-      .toLowerCase();
+    const fileName = file.name.toLowerCase();
+    const extension = ALLOWED_EXTENSIONS.find((item) =>
+      fileName.endsWith(item)
+    );
 
-    if (!allowedExtensions.includes(extension)) {
-      setError("Only PDF, JPG, JPEG and PNG files are allowed.");
-      e.target.value = "";
+    if (!extension) {
       setSelectedFile(null);
+      setFileError("Only PDF, JPG, JPEG and PNG files are allowed.");
+      event.target.value = "";
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Maximum attachment size is 10 MB.");
-      e.target.value = "";
+    if (file.size === 0) {
       setSelectedFile(null);
+      setFileError("The selected file is empty.");
+      event.target.value = "";
       return;
     }
 
-    setError("");
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      setSelectedFile(null);
+      setFileError("Maximum attachment size is 10 MB.");
+      event.target.value = "";
+      return;
+    }
+
     setSelectedFile(file);
   };
 
-  const handleRemoveFile = () => {
+  const resetForm = () => {
+    setForm({
+      subject: "",
+      category: "Technical",
+      description: "",
+    });
     setSelectedFile(null);
+    setFileError("");
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    const input = document.getElementById("ticket-attachment");
+    if (input) input.value = "";
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // First create the ticket, then upload its optional attachment.
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (isAdmin) return;
+
+    const subject = form.subject.trim();
+    const description = form.description.trim();
+
+    if (!subject || !description) {
+      setError("Please enter both subject and description.");
+      return;
+    }
+
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
 
     try {
       setSubmitting(true);
       setError("");
+      setSuccess("");
 
-      // Step 1: Create the ticket
-      const response = await API.post("/tickets/", {
-        subject: form.subject.trim(),
+      // TicketCreate does not accept priority.
+      // The backend sets the default priority to Medium.
+      const createResponse = await API.post("/tickets/", {
+        subject,
         category: form.category,
-        priority: form.priority,
-        description: form.description.trim(),
+        description,
       });
 
+      // Current backend returns { message, ticket: { id, ... } }.
+      const responseData = createResponse?.data || {};
       const createdTicket =
-        response.data?.ticket || response.data;
+        responseData.ticket || responseData.data?.ticket || responseData;
 
       const ticketId =
-        createdTicket?.id || createdTicket?._id;
+        createdTicket.id ||
+        createdTicket._id ||
+        createdTicket.ticket_id ||
+        responseData.ticket_id;
 
-      // Step 2: Upload attachment to the newly created ticket
+      if (!ticketId) {
+        // Ticket response did not contain an ID, so do not make an
+        // attachment request to an undefined URL.
+        setShowForm(false);
+        resetForm();
+        setSuccess(
+          "Ticket was created, but the response did not include its ID. Refresh the list to verify it."
+        );
+        await fetchTickets({ showLoader: false });
+        return;
+      }
+
+      let attachmentUploaded = false;
+      let attachmentUploadMessage = "";
+
       if (selectedFile) {
-        if (!ticketId) {
-          setShowForm(false);
-          resetForm();
-          await fetchTickets();
-
-          setError(
-            "Ticket was created, but its ID was not returned. Attachment could not be uploaded."
-          );
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-
         try {
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+
           await API.post(
             `/tickets/${ticketId}/attachments`,
             formData,
@@ -170,36 +243,55 @@ function Tickets() {
               },
             }
           );
+
+          attachmentUploaded = true;
         } catch (uploadError) {
-          const uploadMessage =
-            uploadError.response?.data?.detail ||
-            "Please try uploading the attachment again.";
-
-          setShowForm(false);
-          resetForm();
-
-          await fetchTickets();
-
-          setError(
-            `Ticket created successfully, but attachment upload failed: ${uploadMessage}`
+          console.error(
+            "Ticket attachment upload error:",
+            uploadError?.response?.data || uploadError
           );
-          return;
+
+          attachmentUploadMessage = getApiErrorMessage(
+            uploadError,
+            "The ticket was created, but its attachment could not be uploaded."
+          );
         }
       }
 
-      // Step 3: Reset form and refresh tickets
-      resetForm();
+      // Keep the user on the Tickets page. Do not navigate to an
+      // undefined ticket route after a successful submission.
       setShowForm(false);
+      resetForm();
 
-      await fetchTickets();
+      if (selectedFile && !attachmentUploaded) {
+        setSuccess(
+          `Ticket created successfully. Attachment upload failed: ${attachmentUploadMessage}`
+        );
+      } else if (attachmentUploaded) {
+        setSuccess("Ticket and attachment submitted successfully.");
+      } else {
+        setSuccess("Support ticket submitted successfully.");
+      }
 
+      await fetchTickets({ showLoader: false });
     } catch (err) {
+      console.error("Create ticket error:", err?.response?.data || err);
+
       setError(
-        err.response?.data?.detail || "Unable to create ticket."
+        getApiErrorMessage(
+          err,
+          "Unable to submit the support ticket. Please try again."
+        )
       );
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const closeForm = () => {
+    if (submitting) return;
+    setShowForm(false);
+    setFileError("");
   };
 
   const filteredTickets = tickets.filter((ticket) => {
@@ -210,7 +302,7 @@ function Tickets() {
     ]
       .filter(Boolean)
       .some((value) =>
-        String(value).toLowerCase().includes(search.toLowerCase())
+        String(value).toLowerCase().includes(search.toLowerCase().trim())
       );
 
     const matchesStatus =
@@ -243,10 +335,16 @@ function Tickets() {
 
             {!isAdmin && (
               <button
+                type="button"
                 className="ticket-create-btn"
-                onClick={() => setShowForm(true)}
+                onClick={() => {
+                  setError("");
+                  setSuccess("");
+                  setShowForm(true);
+                }}
               >
-                <Plus size={18} /> Create Ticket
+                <Plus size={18} />
+                Create Ticket
               </button>
             )}
           </section>
@@ -254,8 +352,26 @@ function Tickets() {
           {error && (
             <div className="ticket-error" role="alert">
               <AlertCircle size={18} />
-              {error}
-              <button onClick={() => setError("")} aria-label="Dismiss">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => setError("")}
+                aria-label="Dismiss error"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          {success && (
+            <div className="ticket-success" role="status">
+              <CheckCircle size={18} />
+              <span>{success}</span>
+              <button
+                type="button"
+                onClick={() => setSuccess("")}
+                aria-label="Dismiss success message"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -300,25 +416,27 @@ function Tickets() {
                   <input
                     placeholder="Search tickets..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(event) => setSearch(event.target.value)}
                   />
                 </div>
 
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(event) => setStatusFilter(event.target.value)}
                 >
-                  <option>All</option>
-                  <option>Open</option>
-                  <option>In Progress</option>
-                  <option>Resolved</option>
-                  <option>Closed</option>
+                  <option value="All">All</option>
+                  <option value="Open">Open</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Resolved">Resolved</option>
+                  <option value="Closed">Closed</option>
                 </select>
 
                 <button
+                  type="button"
                   className="ticket-refresh"
-                  onClick={fetchTickets}
+                  onClick={() => fetchTickets()}
                   title="Refresh tickets"
+                  disabled={loading}
                 >
                   <RefreshCw size={17} />
                 </button>
@@ -352,37 +470,58 @@ function Tickets() {
                   </thead>
 
                   <tbody>
-                    {filteredTickets.map((ticket) => (
-                      <tr key={ticket.id || ticket._id || ticket.ticket_number}>
-                        <td>{ticket.ticket_number || "—"}</td>
+                    {filteredTickets.map((ticket, index) => {
+                      const ticketId = ticket.id || ticket._id;
+                      const ticketNumber = ticket.ticket_number || "—";
+                      const ticketSubject = ticket.subject || "Untitled ticket";
 
-                        <td>
-                          <Link to={`/tickets/${ticket.id || ticket._id}`}>
-                            {ticket.subject}
-                          </Link>
-                        </td>
-
-                        {isAdmin && (
+                      return (
+                        <tr
+                          key={ticketId || ticket.ticket_number || index}
+                        >
+                          <td>{ticketNumber}</td>
                           <td>
-                            {ticket.employee_name || ticket.created_by_name || "—"}
+                            {ticketId ? (
+                              <Link to={`/tickets/${ticketId}`}>
+                                {ticketSubject}
+                              </Link>
+                            ) : (
+                              <span>{ticketSubject}</span>
+                            )}
                           </td>
-                        )}
 
-                        <td>{ticket.category}</td>
+                          {isAdmin && (
+                            <td>
+                              {ticket.employee_name ||
+                                ticket.created_by_name ||
+                                "—"}
+                            </td>
+                          )}
 
-                        <td>
-                          <span className={`ticket-priority ${ticket.priority?.toLowerCase()}`}>
-                            {ticket.priority}
-                          </span>
-                        </td>
-
-                        <td>
-                          <span className={`ticket-status ${ticket.status?.toLowerCase().replaceAll(" ", "-")}`}>
-                            {ticket.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                          <td>{ticket.category || "—"}</td>
+                          <td>
+                            <span
+                              className={`ticket-priority ${
+                                ticket.priority?.toLowerCase() || ""
+                              }`}
+                            >
+                              {ticket.priority || "Medium"}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`ticket-status ${
+                                ticket.status
+                                  ?.toLowerCase()
+                                  .replaceAll(" ", "-") || ""
+                              }`}
+                            >
+                              {ticket.status || "Open"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -392,7 +531,12 @@ function Tickets() {
       </main>
 
       {showForm && (
-        <div className="ticket-modal-backdrop">
+        <div
+          className="ticket-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeForm();
+          }}
+        >
           <form className="ticket-modal" onSubmit={handleSubmit}>
             <div className="ticket-modal-heading">
               <div>
@@ -410,93 +554,133 @@ function Tickets() {
               </button>
             </div>
 
-            <label>Subject</label>
+            <label htmlFor="ticket-subject">Subject</label>
             <input
+              id="ticket-subject"
+              type="text"
               value={form.subject}
-              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              onChange={(event) =>
+                setForm((previous) => ({
+                  ...previous,
+                  subject: event.target.value,
+                }))
+              }
               placeholder="Enter ticket subject"
               maxLength={150}
               required
+              disabled={submitting}
             />
 
-            <div className="ticket-form-grid">
-              <div>
-                <label>Category</label>
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                >
-                  {["Technical", "Documents", "Profile", "Account", "Other"].map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
+            <label htmlFor="ticket-category">Category</label>
+            <select
+              id="ticket-category"
+              value={form.category}
+              onChange={(event) =>
+                setForm((previous) => ({
+                  ...previous,
+                  category: event.target.value,
+                }))
+              }
+              disabled={submitting}
+            >
+              {["Technical", "Documents", "Profile", "Account", "Other"].map(
+                (item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                )
+              )}
+            </select>
 
-              <div>
-                <label>Priority</label>
-                <select
-                  value={form.priority}
-                  onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                >
-                  {["Low", "Medium", "High", "Urgent"].map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
+            <div className="ticket-priority-note">
+              Priority is automatically set to Medium.
             </div>
 
-            <label>Description</label>
+            <label htmlFor="ticket-description">Description</label>
             <textarea
+              id="ticket-description"
               rows={5}
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(event) =>
+                setForm((previous) => ({
+                  ...previous,
+                  description: event.target.value,
+                }))
+              }
               placeholder="Describe your issue..."
               maxLength={5000}
               required
+              disabled={submitting}
             />
 
-            <label>Attachment (Optional)</label>
+            <div className="ticket-upload-field">
+              <label htmlFor="ticket-attachment">Attachment (optional)</label>
 
-            <div className="ticket-file-upload">
-              <label className="ticket-file-select">
-                <Paperclip size={18} />
-                <span>{selectedFile ? "Change File" : "Choose File"}</span>
+              <div className="ticket-upload-control">
+                <label
+                  htmlFor="ticket-attachment"
+                  className="ticket-attachment-button"
+                >
+                  <Paperclip size={17} />
+                  <span>Choose file</span>
+                </label>
+
                 <input
-                  ref={fileInputRef}
+                  id="ticket-attachment"
+                  className="ticket-hidden-file-input"
                   type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                   onChange={handleFileChange}
                   disabled={submitting}
                 />
-              </label>
 
-              <small>PDF, JPG, JPEG or PNG · Maximum 10 MB</small>
+                <span className="ticket-file-name">
+                  {selectedFile ? selectedFile.name : "No file selected"}
+                </span>
+
+                {selectedFile && (
+                  <button
+                    type="button"
+                    className="ticket-remove-file"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setFileError("");
+                      const input = document.getElementById("ticket-attachment");
+                      if (input) input.value = "";
+                    }}
+                    disabled={submitting}
+                    aria-label="Remove selected file"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+
+              <small>PDF, JPG, JPEG or PNG • Maximum file size 10 MB</small>
+
+              {selectedFile && (
+                <div className="ticket-selected-file">
+                  <FileText size={15} />
+                  <span>{selectedFile.name}</span>
+                  <span>
+                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                  </span>
+                </div>
+              )}
+
+              {fileError && (
+                <p className="ticket-file-error" role="alert">
+                  {fileError}
+                </p>
+              )}
             </div>
 
-            {selectedFile && (
-              <div className="ticket-selected-file">
-                <FileText size={19} />
-
-                <div>
-                  <strong>{selectedFile.name}</strong>
-                  <small>
-                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
-                  </small>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleRemoveFile}
-                  disabled={submitting}
-                  aria-label="Remove attachment"
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            )}
-
-            <button type="submit" disabled={submitting}>
-              {submitting ? "Submitting..." : "Submit Ticket"}
+            <button
+              type="submit"
+              className="ticket-submit-btn"
+              disabled={submitting}
+            >
+              {submitting ? "Submitting ticket..." : "Submit Ticket"}
             </button>
           </form>
         </div>
